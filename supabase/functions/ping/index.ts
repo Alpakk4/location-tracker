@@ -10,6 +10,7 @@ Deno.serve(async (req) => {
   const { uid, lat, long } = await req.json();
   const MAPS_API = Deno.env.get("MAPS_API")!;
   console.info("maps api: " + MAPS_API);
+  console.info("info from request", uid, lat, long);
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
   const maps_body = {
     maxResultCount: 1,
@@ -24,14 +25,17 @@ Deno.serve(async (req) => {
       }
     }
   };
+  console.info("DEBUG 1: Fetching maps");
   const maps_res = await fetch(maps_base, {
     body: JSON.stringify(maps_body),
     headers: {
       "X-Goog-Api-Key": MAPS_API,
-      "X-Goog-FieldMask": "places.displayName"
+      "X-Goog-FieldMask": "places.displayName",
+      "Content-Type": "application/json"
     },
     method: "POST"
   });
+  console.info("DEBUG 2: Fetched maps OK", maps_res.status);
   if (maps_res.status != 200) {
     console.warn(maps_res);
     return new Response(null, {
@@ -39,11 +43,16 @@ Deno.serve(async (req) => {
     });
   }
   const maps_data = await maps_res.json();
+  console.info("DEBUG 3: Got maps data:", maps_data);
+  // Write location to database
   const db_body = {
-    uid: uid,
+    latitude: lat,
+    longitude: long,
+    DeviceID: "lalala",
     closest_place: maps_data["places"] == undefined ? "unknown" : maps_data["places"][0]["displayName"]["text"]
   };
-  const db_res = await fetch(Deno.env.get("SUPABASE_URL") + "/rest/v1/logs", {
+  console.info("DEBUG 4: SAVING to DB", db_body);
+  const db_res = await fetch(Deno.env.get("SUPABASE_URL") + "/rest/v1/locationsvisited", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -52,6 +61,7 @@ Deno.serve(async (req) => {
     body: JSON.stringify(db_body)
   });
   if (db_res.status != 201) {
+    console.info("DEBUG 5: ALERT Sending 502 because previous result not 201", db_res);
     return new Response(JSON.stringify({
       "upstream_status": db_res.status,
       "upstream_response": await db_res.json()
@@ -59,6 +69,7 @@ Deno.serve(async (req) => {
       status: 502
     });
   }
+  console.info("DEBUG 6: everything is dandy");
   return db_res;
 });
 
