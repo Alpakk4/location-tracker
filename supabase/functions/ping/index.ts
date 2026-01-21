@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   const db_body = {
     latitude: lat,
     longitude: long,
-    DeviceID: "lalala",
+    DeviceID: uid,
     closest_place: maps_data["places"] == undefined ? "unknown" : maps_data["places"][0]["displayName"]["text"]
   };
   console.info("DEBUG 4: SAVING to DB", db_body);
