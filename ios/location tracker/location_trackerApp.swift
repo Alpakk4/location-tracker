@@ -12,6 +12,8 @@ struct RequestPayload: Codable {
     var uid: String
     var lat: Double
     var long: Double
+    var home_lat: Double? // new
+    var home_long: Double? // new
 }
 
 class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -32,11 +34,12 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func start() {
-        print("starting location service")
+        print("Starting location service")
         manager.startUpdatingLocation()
     }
     
     func stop() {
+        print("Stopping location service")
         manager.stopUpdatingLocation()
     }
     
@@ -89,7 +92,11 @@ class NetworkingService {
         req.setValue(apikey ?? Environment.apikey, forHTTPHeaderField: "apikey")
         print(location.coordinate.latitude, location.coordinate.longitude)
         do {
-            req.httpBody = try JSONEncoder().encode(RequestPayload(uid: uid ?? "anonymous", lat: location.coordinate.latitude, long: location.coordinate.longitude))
+            req.httpBody = try JSONEncoder().encode(RequestPayload(uid: uid ?? "anonymous",
+                                                                   lat: location.coordinate.latitude,
+                                                                   long: location.coordinate.longitude,
+                                                                   home_lat: UserDefaults.standard.double(forKey: "home_lat"),
+                                                                       home_long: UserDefaults.standard.double(forKey: "home_long")))
         } catch {
             print("json encoding failed", error)
             return
