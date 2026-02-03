@@ -10,6 +10,9 @@ public enum Environment {
     enum Keys {
         static let apikey = "API_KEY"
         static let endpoint = "ENDPOINT"
+        static let adminPassword = "HOME_LOCK_PASSWORD"
+
+            
     }
     
     private static let infoDictionary: [String: Any]  = {
@@ -30,6 +33,13 @@ public enum Environment {
         guard let endpoint = infoDictionary[Keys.endpoint] as? String else {
             fatalError("no endpoint provided")
         }
-        return endpoint
+        return endpoint}()
+    
+    static let adminPassword: String = {
+            guard let password = infoDictionary[Keys.adminPassword] as? String else {
+                fatalError("AdminPassword not found in Plist")
+            }
+            return password
     }()
 }
+
