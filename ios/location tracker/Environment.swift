@@ -42,4 +42,3 @@ public enum Environment {
             return password
     }()
 }
-
