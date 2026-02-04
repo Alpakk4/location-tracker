@@ -1,5 +1,23 @@
 supabase/.temp
 supabase/.branches
 .env
-.DS_Store
 Configuration.xcconfig
+*.xcconfig
+
+# Xcode UI settings 
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad
+*.pb*
+*.xcodeproj
+
+# Build products
+build/
+DerivedData/
+
+# System files
+.DS_Store
+
+# CocoaPods (if you use them)
+Pods/
+Media.xcassets
