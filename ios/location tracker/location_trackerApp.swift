@@ -18,7 +18,7 @@ struct RequestPayload: Codable {
 
 class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
-    
+    @Published var currentState: String = "STILL"
     @Published var lastLocation: CLLocation?
     
     override init() {
@@ -26,6 +26,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = true
+        // Optional: Only trigger if moved 10 meters (doesn't consider elevation)
+        manager.distanceFilter = 10
+        //10m & 5 minute timer limit will prevent the actual network calls from being too frequent. Despite high request for accuracy
+        manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     
     func requestAuth() {
@@ -49,7 +53,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             self.lastLocation = loc
         }
-        NetworkingService.shared.sendLocation(loc)
+        NetworkingService.shared.sendLocation(loc, activity: self.currentState)
     }
 }
 
@@ -73,12 +77,24 @@ class NetworkingService {
         }
     }
     
-    func sendLocation(_ location: CLLocation) {
-        print("sending location")
+    func sendLocation(_ location: CLLocation, activity:String) {
+        print("sending location. Activity State \(activity)")
+        
+        // AMMEND THE
+        let interval: TimeInterval = {
+            switch activity {
+            case "WALKING":    return 120  // 2 mins
+            case "CYCLING":    return 420  // 7 mins
+            case "AUTOMOTIVE": return 600  // 10 mins
+            case "STILL":      return 1800 // 30 mins
+            default:           return 300  // 5 mins default
+            }
+                }()
         
         if let l: Date = last {
-            if (l + 40) > Date.now {
-                print("cancelling: 40s limit")
+            // don't report within 5 mins
+            if (l + interval) > Date.now {
+                print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
                 return
             }
         }
@@ -93,10 +109,10 @@ class NetworkingService {
         print(location.coordinate.latitude, location.coordinate.longitude)
         do {
             req.httpBody = try JSONEncoder().encode(RequestPayload(uid: uid ?? "anonymous",
-                                                                   lat: location.coordinate.latitude,
-                                                                   long: location.coordinate.longitude,
-                                                                   home_lat: UserDefaults.standard.double(forKey: "home_lat"),
-                                                                       home_long: UserDefaults.standard.double(forKey: "home_long")))
+           lat: location.coordinate.latitude,
+           long: location.coordinate.longitude,
+           home_lat: UserDefaults.standard.double(forKey: "home_lat"),
+           home_long: UserDefaults.standard.double(forKey: "home_long")))
         } catch {
             print("json encoding failed", error)
             return
@@ -124,8 +140,8 @@ struct location_trackerApp: App {
                 .environmentObject(locService)
                 .onAppear {
                     print("hello world!!!!!")
-                    locService.requestAuth()
                 }
         }
     }
 }
+
