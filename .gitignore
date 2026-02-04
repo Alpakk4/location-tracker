@@ -9,7 +9,6 @@ Configuration.xcconfig
 project.xcworkspace/xcuserdata/
 *.xcuserdatad
 *.pb*
-*.xcodeproj
 
 # Build products
 build/
