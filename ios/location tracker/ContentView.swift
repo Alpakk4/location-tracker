@@ -1,16 +1,13 @@
-//
-//  ContentView.swift
-//  location tracker
-//
-//  Created by Joel on 01/09/2025.
-//
-
 import SwiftUI
 import SwiftData
+import CoreLocation
 
 struct ContentView: View {
-    let defaults = UserDefaults.standard
+    // Persistent state to track if onboarding is done
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+    
     @EnvironmentObject var loc: LocationService
+    let defaults = UserDefaults.standard
     
     // --- Configuration State ---
     @State private var enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
@@ -27,9 +24,25 @@ struct ContentView: View {
     @State private var showingPasswordAlert = false
     @State private var showingSetHomeAlert = false
     @State private var enteredPassword = ""
-    
+
     var body: some View {
-        VStack(spacing: 20) { // Added spacing for better flow
+        ZStack {
+            if hasCompletedOnboarding {
+                // Your Main UI logic
+                mainAppContent
+                    .transition(.opacity)
+            } else {
+                // The Guided Welcome Screen
+                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+                    .transition(.move(edge: .bottom))
+            }
+        }
+        .animation(.spring(), value: hasCompletedOnboarding)
+    }
+
+    // MARK: - Main App UI
+    var mainAppContent: some View {
+        VStack(spacing: 20) {
             
             // MARK: 1. Top Banner (Live Location)
             HStack {
@@ -41,7 +54,7 @@ struct ContentView: View {
                         Text("LAT: \(last.coordinate.latitude, specifier: "%.6f")")
                         Text("LON: \(last.coordinate.longitude, specifier: "%.6f")")
                     }
-                    .font(.system(.subheadline, design: .monospaced)) // Monospaced prevents jitter
+                    .font(.system(.subheadline, design: .monospaced))
                     .fontWeight(.medium)
                 } else {
                     Text("Acquiring GPS Signal...")
@@ -52,13 +65,13 @@ struct ContentView: View {
                 Spacer()
             }
             .padding()
-            .background(Color.blue.opacity(0.1)) // Subtle background
+            .background(Color.blue.opacity(0.1))
             .cornerRadius(12)
             
             // MARK: 2. Styled "Send Ping" Button
             Button(action: {
                 if let last = loc.lastLocation {
-                    NetworkingService.shared.sendLocation(last)
+                    NetworkingService.shared.sendLocation(last, activity: loc.currentState)
                 }
             }) {
                 HStack {
@@ -70,14 +83,13 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .foregroundColor(.blue)
                 .background(Color.white)
-                // The Border Logic:
                 .overlay(
                     RoundedRectangle(cornerRadius: 15)
                         .stroke(Color.blue, lineWidth: 2)
                 )
                 .shadow(color: .gray.opacity(0.2), radius: 4, x: 0, y: 2)
             }
-            .padding(.horizontal, 40) // Indent the button slightly
+            .padding(.horizontal, 40)
             .disabled(loc.lastLocation == nil)
             .opacity(loc.lastLocation == nil ? 0.6 : 1.0)
             
@@ -87,13 +99,13 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 15) {
                     Toggle(isOn: $enableReporting) {
-                        Label("Enable Background Reporting", systemImage: "timer")
+                        Label("Location Sharing is \(enableReporting ? "ON" : "OFF")", systemImage: "timer")
                             .font(.headline)
                     }
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(10)
-                    .onChange(of: enableReporting, initial: true) {
+                    .onChange(of: enableReporting) {
                         if enableReporting {
                             loc.start()
                             defaults.set(true, forKey: ConfigurationKeys.enableReporting)
@@ -103,7 +115,6 @@ struct ContentView: View {
                         }
                     }
                     
-                    // Grouped Text Fields
                     VStack(spacing: 0) {
                         ConfigRow(title: "Endpoint", icon: "network", text: $endpoint) {
                             NetworkingService.shared.endpoint = endpoint
@@ -171,7 +182,6 @@ struct ContentView: View {
             }
         }
         .padding()
-        // --- Alerts remain exactly the same ---
         .alert("Set Home Location?", isPresented: $showingSetHomeAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Confirm", role: .destructive) {
@@ -203,25 +213,81 @@ struct ContentView: View {
     }
 }
 
-// Helper View to clean up the TextFields
+// MARK: - Onboarding View
+struct OnboardingView: View {
+    @EnvironmentObject var loc: LocationService
+    @Binding var hasCompletedOnboarding: Bool
+
+    var body: some View {
+        VStack(spacing: 30) {
+            Spacer()
+            
+            Image(systemName: "location.circle.fill")
+                .resizable()
+                .frame(width: 80, height: 80)
+                .foregroundColor(.blue)
+            
+            Text("Enable Background Tracking")
+                .font(.title).bold()
+            
+            Text("This app maps your activity diary. To work correctly, it needs access to your location even when the app is closed.")
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+                .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                    Text("Select **'Allow While Using App'** when prompted.")
+                }
+                HStack(alignment: .top) {
+                    Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                    Text("Then, go to **Settings > Apps > pingLo > Location** and set it to **'Always'**.")
+                }
+            }
+            .font(.subheadline)
+            .padding(.horizontal)
+            
+            Spacer()
+
+            Button(action: {
+                loc.requestAuth()
+                hasCompletedOnboarding = true
+            }) {
+                Text("Enable Always Access")
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
+        }
+    }
+}
+
+// MARK: - Helper Views
 struct ConfigRow: View {
     let title: String
     let icon: String
     @Binding var text: String
     var onCommit: () -> Void
-    
+
     var body: some View {
         HStack {
             Image(systemName: icon)
                 .foregroundColor(.gray)
                 .frame(width: 20)
             TextField(title, text: $text)
-                .onChange(of: text, initial: false) { onCommit() }
+                .onChange(of: text) { onCommit() }
         }
         .padding()
     }
 }
-
-#Preview {
+#Preview{
     ContentView()
+        .environmentObject(LocationService())
 }
+
