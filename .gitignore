@@ -23,3 +23,5 @@ Pods/
 Media.xcassets
 # Ignore local deno
 local_deno/
+#Data
+seed.sql
