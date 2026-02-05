@@ -21,3 +21,5 @@ Configuration.xcconfig
 # CocoaPods (if you use them)
 Pods/
 Media.xcassets
+# Ignore local deno
+local_deno/
