@@ -58,6 +58,41 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."locationsvisitednew" (
+    "entryid" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "timezone"('gmt'::"text", "now"()) NOT NULL,
+    "latitude" double precision NOT NULL,
+    "longitude" double precision NOT NULL,
+    "deviceid" character varying NOT NULL,
+    "placeid" "text",
+    "visitid" "uuid",
+    "closest_place" "text",
+    "primary_type" "text",
+    "other_types" "text"[],
+    "position_from_home" "jsonb",
+    "motion_type" "jsonb" DEFAULT '{"motion": "unknown", "confidence": "unknown"}'::"jsonb"
+);
+
+
+ALTER TABLE "public"."locationsvisitednew" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "public"."locationsvisitednew"
+    ADD CONSTRAINT "locationsvisitednew_pkey" PRIMARY KEY ("entryid");
+
+
+
+CREATE POLICY "Allow anonymous inserts" ON "public"."locationsvisitednew" FOR INSERT TO "authenticated", "anon", "service_role" WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."locationsvisitednew" ENABLE ROW LEVEL SECURITY;
+
 
 
 
@@ -245,6 +280,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."locationsvisitednew" TO "anon";
+GRANT ALL ON TABLE "public"."locationsvisitednew" TO "authenticated";
+GRANT ALL ON TABLE "public"."locationsvisitednew" TO "service_role";
+
+
+
 
 
 
@@ -278,39 +319,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
--- Manually added table definition
-create table public.locationsvisitednew (
-  entryid uuid not null default gen_random_uuid (),
-  created_at timestamp with time zone not null default timezone ('gmt'::text, now()),
-  latitude double precision not null,
-  longitude double precision not null,
-  deviceid character varying not null,
-  placeid text null,
-  visitid uuid null,
-  closest_place text null,
-  primary_type text null,
-  other_types text[] null,
-  position_from_home jsonb null,
-  constraint locationsvisitednew_pkey primary key (entryid)
-  -- Note: I removed the 'visits' foreign key for now so it doesn't error out 
-  -- if you don't have the 'visits' table locally yet.
-);
 
--- 1. Ensure RLS is actually on
-ALTER TABLE public.locationsvisitednew ENABLE ROW LEVEL SECURITY;
-
--- 2. Create a policy that allows anyone to insert (Local Dev Only)
-CREATE POLICY "Allow anonymous inserts" 
-ON public.locationsvisitednew 
-FOR INSERT 
-TO anon, authenticated, service_role 
-WITH CHECK (true);
-
--- Ensure permissions are set
-ALTER TABLE public.locationsvisitednew OWNER TO postgres;
-GRANT ALL ON TABLE public.locationsvisitednew TO anon;
-GRANT ALL ON TABLE public.locationsvisitednew TO authenticated;
-GRANT ALL ON TABLE public.locationsvisitednew TO service_role;
 
 
 

@@ -55,7 +55,7 @@ async function idHasher(text:string) {
 console.info('server started');
 //DEFINE PING LOCATION FUNCTION
 Deno.serve(async (req) => {
-  const { uid, lat, long, home_lat, home_long } = await req.json();
+  const { uid, lat, long, home_lat, home_long,motion} = await req.json();
   const MAPS_API = Deno.env.get("MAPS_API")!;
   console.info("maps api: " + MAPS_API);
   console.info("info from request", uid, lat, long, home_lat, home_long);
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
           latitude: lat,
           longitude: long
         },
-        radius: 75.0
+        radius: 50.0
       }
     }
   };
@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
     latitude: lat,
     longitude: long,
     deviceid: uid,
+    motion_type: motion,
     closest_place: firstPlace?.displayName?.text ?? "Unknown",
     primary_type: firstPlace?.primaryType ?? "Unknown",
     // Pass the array directly. If it doesn't exist, send an empty array []
