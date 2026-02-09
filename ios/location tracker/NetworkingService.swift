@@ -25,23 +25,25 @@ class NetworkingService {
         }
     }
     
-    func sendLocation(_ location: CLLocation, activity: String, confidence: String) {
-        print("sending location. Activity State \(activity) (\(confidence))")
+    func sendLocation(_ location: CLLocation, activity: String, confidence: String, force: Bool = false) {
+        print("sending location. Activity State \(activity) (\(confidence))\(force ? " [FORCED]" : "")")
         
-        let interval: TimeInterval = {
-            switch activity {
-            case "WALKING":    return 120  // 2 mins
-            case "CYCLING":    return 420  // 7 mins
-            case "AUTOMOTIVE": return 600  // 10 mins
-            case "STILL":      return 1800 // 30 mins
-            default:           return 300  // 5 mins default
-            }
-                }()
-        
-        if let l: Date = last {
-            if (l + interval) > Date.now {
-                print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
-                return
+        if !force {
+            let interval: TimeInterval = {
+                switch activity {
+                case "WALKING":    return 120  // 2 mins
+                case "CYCLING":    return 420  // 7 mins
+                case "AUTOMOTIVE": return 600  // 10 mins
+                case "STILL":      return 1800 // 30 mins
+                default:           return 300  // 5 mins default
+                }
+            }()
+            
+            if let l: Date = last {
+                if (l + interval) > Date.now {
+                    print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
+                    return
+                }
             }
         }
         last = Date.now
