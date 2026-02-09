@@ -1,4 +1,4 @@
-// diarySubmit: receives completed diary entries from the iOS app and inserts them
+// diary-submit: receives completed diary entries from the iOS app and inserts them
 // into the diary_completed table. Returns 201 on success.
 
 import { serve } from "std/http/server.ts"

@@ -5,9 +5,9 @@
 
 import Foundation
 
-// MARK: - Supabase diaryMaker Response
+// MARK: - Supabase diary-maker Response
 
-/// Raw entry returned by the diaryMaker Supabase function.
+/// Raw entry returned by the diary-maker Supabase function.
 struct DiaryMakerEntry: Codable {
     let entryid: String
     let created_at: String
@@ -57,7 +57,7 @@ struct DiaryDay: Codable, Identifiable {
 
 // MARK: - Submission Payload
 
-/// Payload sent to the diarySubmit Supabase function.
+/// Payload sent to the diary-submit Supabase function.
 struct DiarySubmitPayload: Codable {
     let deviceId: String
     let date: String

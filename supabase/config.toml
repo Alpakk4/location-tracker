@@ -362,14 +362,14 @@ verify_jwt = false
 import_map = "./functions/ping/deno.json"
 entrypoint = "./functions/ping/index.ts"
 
-[functions.diaryMaker]
+[functions.diary-maker]
 enabled = true
 verify_jwt = false
-import_map = "./functions/diaryMaker/deno.json"
-entrypoint = "./functions/diaryMaker/index.ts"
+import_map = "./functions/diary-maker/deno.json"
+entrypoint = "./functions/diary-maker/index.ts"
 
-[functions.diarySubmit]
+[functions.diary-submit]
 enabled = true
 verify_jwt = false
-import_map = "./functions/diarySubmit/deno.json"
-entrypoint = "./functions/diarySubmit/index.ts"
+import_map = "./functions/diary-submit/deno.json"
+entrypoint = "./functions/diary-submit/index.ts"
