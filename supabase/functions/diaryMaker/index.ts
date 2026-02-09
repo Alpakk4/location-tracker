@@ -160,31 +160,71 @@ import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
 
 serve(async (req) => {
-  const { deviceId, date } = await req.json() // e.g., "test-MAC", "2026-02-06"
+  // 1. Handle CORS (if calling from a browser/mobile app later)
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
+  }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  )
+  try {
+    // 2. Validate Request Body
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return new Response(JSON.stringify({ error: "Missing JSON body" }), { status: 400 });
+    }
 
-  // Querying ONLY the fields you specified
-  const { data, error } = await supabase
-    .from('locationsvisitednew')
-    .select(`
-      entryid,
-      created_at,
-      primary_type,
-      other_types,
-      motion_type
-    `)
-    .eq('deviceid', deviceId)
-    .gte('created_at', `${date}T00:00:00Z`)
-    .lte('created_at', `${date}T23:59:59Z`)
-    .order('created_at', { ascending: true })
+    const { deviceId, date } = body;
+    if (!deviceId || !date) {
+      return new Response(JSON.stringify({ error: "Missing deviceId or date" }), { status: 400 });
+    }
 
-  if (error) return new Response(JSON.stringify(error), { status: 400 })
+    // 3. Initialize Supabase with safety checks
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  })
+    if (!supabaseUrl || !supabaseKey) {
+      console.error("Missing Environment Variables");
+      return new Response(JSON.stringify({ error: "Server configuration error" }), { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    console.info(`Fetching diary for: ${deviceId} on ${date}`);
+
+    // 4. Query the database
+    const { data, error } = await supabase
+      .from('locationsvisitednew')
+      .select(`
+        entryid,
+        created_at,
+        primary_type,
+        position_from_home,
+        other_types,
+        motion_type
+      `)
+      .eq('deviceid', deviceId)
+      .gte('created_at', `${date}T00:00:00Z`)
+      .lte('created_at', `${date}T23:59:59Z`)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error("Supabase Error:", error);
+      return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    }
+
+    // 5. Return Data
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*" 
+      },
+    });
+
+  } catch (err) {
+    console.error("Unexpected Error:", err.message);
+    return new Response(JSON.stringify({ error: "Internal Server Error", details: err.message }), { 
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
 })
