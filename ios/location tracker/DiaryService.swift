@@ -32,37 +32,24 @@ class DiaryService: ObservableObject {
         loadLocalDiaries()
     }
 
-    // MARK: - Derive Base URL
+    // MARK: - Environment Helpers
 
-    /// Derives the Supabase functions base URL from the configured ping endpoint.
-    /// The existing endpoint is e.g. "https://xxx.supabase.co/functions/v1/ping"
-    /// We strip the trailing function name to get the base.
-    private func functionsBaseURL() -> String? {
-        let configured = NetworkingService.shared.endpoint
-                         ?? UserDefaults.standard.string(forKey: ConfigurationKeys.endpoint)
-                         ?? Environment.endpoint
-        // Strip trailing path component (e.g. "/ping") to get base like ".../functions/v1"
-        guard let url = URL(string: configured) else { return nil }
-        return url.deletingLastPathComponent().absoluteString
+    /// Base URL for Supabase edge functions, e.g. "https://xxx.supabase.co/functions/v1/"
+    private func functionsBaseURL() -> String {
+        return Environment.endpoint
     }
 
     private func apiKey() -> String {
-        return NetworkingService.shared.apikey
-               ?? UserDefaults.standard.string(forKey: ConfigurationKeys.apikey)
-               ?? Environment.apikey
+        return Environment.apikey
     }
 
-    // MARK: - Fetch Diary (calls diaryMaker)
+    // MARK: - Fetch Diary (calls diary-maker)
 
     func fetchDiary(deviceId: String, date: String) async {
-        guard let base = functionsBaseURL() else {
-            errorMessage = "No endpoint configured"
-            return
-        }
-
-        let urlString = "\(base)diaryMaker"
+        let base = functionsBaseURL()
+        let urlString = "\(base)diary-maker"
         guard let url = URL(string: urlString) else {
-            errorMessage = "Invalid diaryMaker URL"
+            errorMessage = "Invalid diary-maker URL"
             return
         }
 
@@ -145,7 +132,7 @@ class DiaryService: ObservableObject {
         }
     }
 
-    // MARK: - Submit Completed Diary (calls diarySubmit)
+    // MARK: - Submit Completed Diary (calls diary-submit)
 
     func submitCompletedDiary(_ diaryDay: DiaryDay) async -> Bool {
         guard diaryDay.isCompleted else {
@@ -153,14 +140,10 @@ class DiaryService: ObservableObject {
             return false
         }
 
-        guard let base = functionsBaseURL() else {
-            errorMessage = "No endpoint configured"
-            return false
-        }
-
-        let urlString = "\(base)diarySubmit"
+        let base = functionsBaseURL()
+        let urlString = "\(base)diary-submit"
         guard let url = URL(string: urlString) else {
-            errorMessage = "Invalid diarySubmit URL"
+            errorMessage = "Invalid diary-submit URL"
             return false
         }
 

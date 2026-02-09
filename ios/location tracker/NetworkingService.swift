@@ -46,7 +46,7 @@ class NetworkingService {
         }
         last = Date.now
         
-        guard let url = URL(string: endpoint ?? Environment.endpoint) else { return }
+        guard let url = URL(string: Environment.endpoint + "ping") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
