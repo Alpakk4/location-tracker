@@ -26,18 +26,7 @@ struct ContentView: View {
     @State private var enteredPassword = ""
 
     var body: some View {
-        ZStack {
-            if hasCompletedOnboarding {
-                // Your Main UI logic
-                mainAppContent
-                    .transition(.opacity)
-            } else {
-                // The Guided Welcome Screen
-                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
-                    .transition(.move(edge: .bottom))
-            }
-        }
-        .animation(.spring(), value: hasCompletedOnboarding)
+        mainAppContent
     }
 
     // MARK: - Main App UI
@@ -286,8 +275,9 @@ struct ConfigRow: View {
         .padding()
     }
 }
-#Preview{
+#Preview {
     ContentView()
         .environmentObject(LocationService())
+        .environmentObject(DiaryService())
 }
 

@@ -25,14 +25,40 @@ struct RequestPayload: Codable {
 @main
 struct location_trackerApp: App {
     @StateObject private var locService = LocationService()
+    @StateObject private var diaryService = DiaryService()
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabView()
                 .environmentObject(locService)
+                .environmentObject(diaryService)
                 .onAppear {
                     print("hello world!!!!!")
                 }
+        }
+    }
+}
+
+// MARK: - Tab Navigation
+
+struct MainTabView: View {
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+    @EnvironmentObject var loc: LocationService
+
+    var body: some View {
+        if hasCompletedOnboarding {
+            TabView {
+                ContentView()
+                    .tabItem {
+                        Label("Tracker", systemImage: "location.fill")
+                    }
+                DiaryView()
+                    .tabItem {
+                        Label("Diary", systemImage: "book.fill")
+                    }
+            }
+        } else {
+            OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
         }
     }
 }

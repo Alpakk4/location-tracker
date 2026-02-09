@@ -360,9 +360,16 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 enabled = true
 verify_jwt = false
 import_map = "./functions/ping/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/ping/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/ping/*.html" ]
+
+[functions.diaryMaker]
+enabled = true
+verify_jwt = false
+import_map = "./functions/diaryMaker/deno.json"
+entrypoint = "./functions/diaryMaker/index.ts"
+
+[functions.diarySubmit]
+enabled = true
+verify_jwt = false
+import_map = "./functions/diarySubmit/deno.json"
+entrypoint = "./functions/diarySubmit/index.ts"
