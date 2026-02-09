@@ -90,14 +90,18 @@ class DiaryService: ObservableObject {
 
             let rawEntries = try JSONDecoder().decode([DiaryMakerEntry].self, from: data)
 
-            // Transform raw entries into DiaryEntry with activity labels
+            // Transform raw entries (visit clusters) into DiaryEntry with activity labels
             let entries: [DiaryEntry] = rawEntries.map { raw in
                 DiaryEntry(
                     id: raw.entryid,
                     createdAt: raw.created_at,
+                    endedAt: raw.ended_at,
+                    clusterDurationSeconds: raw.cluster_duration_s,
                     primaryType: raw.primary_type,
                     otherTypes: raw.other_types,
                     motionType: raw.motion_type,
+                    visitConfidence: raw.visit_confidence,
+                    pingCount: raw.ping_count,
                     confirmedPlace: nil,
                     confirmedActivity: nil,
                     activityLabel: PlaceActivityMapping.activityLabel(for: raw.primary_type),
@@ -158,7 +162,10 @@ class DiaryService: ObservableObject {
                 confirmed_place: entry.confirmedPlace ?? false,
                 confirmed_activity: entry.confirmedActivity ?? false,
                 user_context: entry.userContext,
-                motion_type: entry.motionType
+                motion_type: entry.motionType,
+                visit_confidence: entry.visitConfidence,
+                ping_count: entry.pingCount,
+                cluster_duration_s: entry.clusterDurationSeconds
             )
         }
 

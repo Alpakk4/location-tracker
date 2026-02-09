@@ -98,17 +98,31 @@ struct DiaryEntryCard: View {
     var onChanged: () -> Void
 
     /// Format "2026-02-06T13:25:12.434339+00:00" to "13:25"
-    private var timeString: String {
-        if let tIndex = entry.createdAt.firstIndex(of: "T") {
-            let timeStart = entry.createdAt.index(after: tIndex)
-            let timePart = String(entry.createdAt[timeStart...].prefix(5))
-            return timePart
+    private func shortTime(_ iso: String) -> String {
+        if let tIndex = iso.firstIndex(of: "T") {
+            let timeStart = iso.index(after: tIndex)
+            return String(iso[timeStart...].prefix(5))
         }
-        return entry.createdAt
+        return iso
+    }
+
+    private var timeRangeString: String {
+        let start = shortTime(entry.createdAt)
+        let end = shortTime(entry.endedAt)
+        if start == end { return start }
+        return "\(start) – \(end)"
     }
 
     private var displayType: String {
         entry.primaryType.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private var confidenceColor: Color {
+        switch entry.visitConfidence {
+        case "high":   return .green
+        case "medium": return .orange
+        default:       return .red
+        }
     }
 
     var body: some View {
@@ -116,8 +130,11 @@ struct DiaryEntryCard: View {
 
             // MARK: Header
             HStack {
-                Text(timeString)
+                Text(timeRangeString)
                     .font(.system(.subheadline, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Text(entry.formattedDuration)
+                    .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 if entry.isCompleted {
@@ -127,6 +144,26 @@ struct DiaryEntryCard: View {
                     Image(systemName: "circle")
                         .foregroundColor(.orange)
                 }
+            }
+
+            // MARK: Visit confidence badge and duration
+            HStack(spacing: 8) {
+                Text(entry.visitConfidence.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .foregroundColor(.white)
+                    .background(confidenceColor)
+                    .cornerRadius(6)
+
+                Text(entry.formattedDuration)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("\(entry.pingCount) ping\(entry.pingCount == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             // Place type and activity

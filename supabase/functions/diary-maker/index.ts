@@ -1,166 +1,223 @@
-// mock data
-/*
-
-[
-  {
-    "entryid": "775c11c2-11cf-47a5-9ef7-1a653b42ed29",
-    "created_at": "2026-02-06T13:25:12.434339+00:00",
-    "primary_type": "park",
-    "other_types": ["park", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "walking",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "c70aefc3-7651-4d6e-810b-66fb4be5054f",
-    "created_at": "2026-02-06T13:25:57.99983+00:00",
-    "primary_type": "primary_school",
-    "other_types": ["primary_school", "school", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "walking",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "8e62831e-315f-42e7-a08c-5e9c102f0de2",
-    "created_at": "2026-02-06T13:30:11.360599+00:00",
-    "primary_type": "cultural_landmark",
-    "other_types": ["cultural_landmark", "tourist_attraction", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "walking",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "fe868c39-7d7f-4df0-81da-9a06ba720963",
-    "created_at": "2026-02-06T13:30:17.187394+00:00",
-    "primary_type": "cultural_landmark",
-    "other_types": ["cultural_landmark", "tourist_attraction", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "walking",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "77048b2a-592b-4863-930d-9523f3b58087",
-    "created_at": "2026-02-06T13:30:25.838777+00:00",
-    "primary_type": "cultural_landmark",
-    "other_types": ["cultural_landmark", "tourist_attraction", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "walking",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "08dbacb4-926d-47be-960f-4a7f94b85840",
-    "created_at": "2026-02-06T13:32:23.923443+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "medium"
-    }
-  },
-  {
-    "entryid": "4f7f5e98-8414-4d1b-b87b-cd933fb09aa9",
-    "created_at": "2026-02-06T13:32:30.385424+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "medium"
-    }
-  },
-  {
-    "entryid": "aeb0adc0-ed30-45f7-9d46-2cd4e3da2f63",
-    "created_at": "2026-02-06T13:32:36.40137+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "medium"
-    }
-  },
-  {
-    "entryid": "8b085e63-d10f-40be-a27b-1156fab70c28",
-    "created_at": "2026-02-06T13:32:43.661549+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "medium"
-    }
-  },
-  {
-    "entryid": "10a95590-e518-41ba-a544-c7594b8167aa",
-    "created_at": "2026-02-06T13:33:08.132168+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "74418800-f3f2-4a3a-81e3-f8daa08100da",
-    "created_at": "2026-02-06T13:34:28.76573+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "3a2932c6-18d0-4f5e-afe5-c41ff2f00e2c",
-    "created_at": "2026-02-06T13:36:37.760741+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "acc6d74d-0a71-4315-a982-e20701da20be",
-    "created_at": "2026-02-06T13:39:45.871436+00:00",
-    "primary_type": "Unknown",
-    "other_types": ["point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "2bbd920e-acce-4553-a73e-e39e499ddd58",
-    "created_at": "2026-02-06T13:47:29.403305+00:00",
-    "primary_type": "Unknown",
-    "other_types": [],
-    "motion_type": {
-      "motion": "cycling",
-      "confidence": "high"
-    }
-  },
-  {
-    "entryid": "df1101f2-e5b3-4a70-a1af-b9c285807022",
-    "created_at": "2026-02-06T13:52:36.131288+00:00",
-    "primary_type": "subway_station",
-    "other_types": ["subway_station", "transit_station", "point_of_interest", "establishment"],
-    "motion_type": {
-      "motion": "still",
-      "confidence": "high"
-    }
-  }
-]
-  */
-// Diary builderf logic for diary construction
+// Diary builder: clusters location pings into visits with confidence classification
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface PositionFromHome {
+  distance: number; // metres from home
+  bearing: number;  // degrees (0-360)
+}
+
+interface MotionType {
+  motion: string;     // walking | cycling | automotive | still | unknown
+  confidence: string; // low | medium | high | unknown
+}
+
+interface RawPing {
+  entryid: string;
+  created_at: string;
+  primary_type: string;
+  other_types: string[];
+  motion_type: MotionType;
+  position_from_home: PositionFromHome;
+}
+
+interface ClusterResult {
+  entryid: string;
+  created_at: string;
+  ended_at: string;
+  cluster_duration_s: number;
+  primary_type: string;
+  other_types: string[];
+  motion_type: MotionType;
+  visit_confidence: "high" | "medium" | "low";
+  ping_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Distance between two points given as polar coords from a shared origin (home).
+ *  Uses the law of cosines: d = sqrt(d1² + d2² - 2·d1·d2·cos(θ2-θ1))           */
+function distanceBetween(a: PositionFromHome, b: PositionFromHome): number {
+  const dθ = (b.bearing - a.bearing) * Math.PI / 180;
+  const d2 = a.distance ** 2 + b.distance ** 2 -
+             2 * a.distance * b.distance * Math.cos(dθ);
+  return Math.sqrt(Math.max(0, d2)); // guard against tiny negatives from fp
+}
+
+/** True when motion confidence is at least "medium". */
+function isMediumPlusConfidence(confidence: string): boolean {
+  return confidence === "medium" || confidence === "high";
+}
+
+/** Classify one consecutive-ping pair into a confidence level. */
+function pairConfidence(dist: number, prevMotion: MotionType, currMotion: MotionType): "high" | "medium" | "low" {
+  const sameMotion = currMotion.motion === prevMotion.motion;
+  const isStillOrWalking = currMotion.motion === "still" || currMotion.motion === "walking";
+  const favorablePath = sameMotion || (isStillOrWalking && isMediumPlusConfidence(currMotion.confidence));
+
+  if (favorablePath) {
+    if (dist <= 25) return "high";
+    if (dist <= 50) return "medium";
+    return "low";
+  } else {
+    // Different motion type
+    if (dist <= 50) return "medium";
+    return "low";
+  }
+}
+
+/** Return the most common element in an array (mode). Falls back to first element. */
+function mode<T>(arr: T[]): T {
+  const counts = new Map<string, number>();
+  for (const v of arr) {
+    const key = String(v);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let best = arr[0];
+  let bestCount = 0;
+  for (const v of arr) {
+    const c = counts.get(String(v))!;
+    if (c > bestCount) { bestCount = c; best = v; }
+  }
+  return best;
+}
+
+/** Numeric confidence rank for ordering (lower = worse). */
+function confidenceRank(c: "high" | "medium" | "low"): number {
+  if (c === "high") return 3;
+  if (c === "medium") return 2;
+  return 1;
+}
+
+/** Minimum confidence of two levels. */
+function minConfidence(a: "high" | "medium" | "low", b: "high" | "medium" | "low"): "high" | "medium" | "low" {
+  return confidenceRank(a) <= confidenceRank(b) ? a : b;
+}
+
+/** Duration in whole seconds between two ISO timestamps. */
+function durationSeconds(startISO: string, endISO: string): number {
+  return Math.max(0, Math.round((new Date(endISO).getTime() - new Date(startISO).getTime()) / 1000));
+}
+
+// ---------------------------------------------------------------------------
+// Clustering
+// ---------------------------------------------------------------------------
+
+function clusterPings(pings: RawPing[]): ClusterResult[] {
+  if (pings.length === 0) return [];
+
+  const clusters: RawPing[][] = [];
+  let current: RawPing[] = [pings[0]];
+
+  for (let i = 1; i < pings.length; i++) {
+    const prev = pings[i - 1];
+    const curr = pings[i];
+    const dist = distanceBetween(prev.position_from_home, curr.position_from_home);
+
+    if (dist <= 75) {
+      current.push(curr);
+    } else {
+      clusters.push(current);
+      current = [curr];
+    }
+  }
+  clusters.push(current); // finalise last cluster
+
+  // Build representative entries
+  return clusters.map((pingsInCluster) => {
+    // Confidence: evaluate every consecutive pair, take the minimum
+    let clusterConfidence: "high" | "medium" | "low" = "high"; // start optimistic
+    for (let i = 1; i < pingsInCluster.length; i++) {
+      const dist = distanceBetween(
+        pingsInCluster[i - 1].position_from_home,
+        pingsInCluster[i].position_from_home,
+      );
+      const pc = pairConfidence(dist, pingsInCluster[i - 1].motion_type, pingsInCluster[i].motion_type);
+      clusterConfidence = minConfidence(clusterConfidence, pc);
+    }
+
+    // Representative fields
+    const firstPing = pingsInCluster[0];
+    const lastPing = pingsInCluster[pingsInCluster.length - 1];
+
+    const primaryTypes = pingsInCluster.map(p => p.primary_type);
+    const motionTypes = pingsInCluster.map(p => p.motion_type);
+
+    // Union of all other_types (deduplicated)
+    const allOtherTypes = [...new Set(pingsInCluster.flatMap(p => p.other_types))];
+
+    // Most common motion_type (compare by serialised JSON key)
+    const motionMode = mode(motionTypes.map(m => JSON.stringify(m)));
+
+    return {
+      entryid: firstPing.entryid,
+      created_at: firstPing.created_at,
+      ended_at: lastPing.created_at,
+      cluster_duration_s: durationSeconds(firstPing.created_at, lastPing.created_at),
+      primary_type: mode(primaryTypes),
+      other_types: allOtherTypes,
+      motion_type: JSON.parse(motionMode) as MotionType,
+      visit_confidence: clusterConfidence,
+      ping_count: pingsInCluster.length,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Selection: all high + up to 10 medium/low (guarantee ≥1 of each if available)
+// ---------------------------------------------------------------------------
+
+function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
+  const high   = clusters.filter(c => c.visit_confidence === "high");
+  const medium = clusters.filter(c => c.visit_confidence === "medium");
+  const low    = clusters.filter(c => c.visit_confidence === "low");
+
+  const MAX_NON_HIGH = 10;
+  let selectedNonHigh: ClusterResult[] = [];
+
+  if (medium.length + low.length <= MAX_NON_HIGH) {
+    // Everything fits
+    selectedNonHigh = [...medium, ...low];
+  } else {
+    // Guarantee at least 1 low if it exists
+    const reservedLow  = low.length > 0 ? 1 : 0;
+    // Guarantee at least 1 medium if it exists
+    const reservedMed  = medium.length > 0 ? 1 : 0;
+
+    const slotsForMedium = Math.min(medium.length, MAX_NON_HIGH - reservedLow);
+    const slotsForLow    = MAX_NON_HIGH - slotsForMedium;
+
+    const pickedMedium = medium.slice(0, Math.max(slotsForMedium, reservedMed));
+    const pickedLow    = low.slice(0, Math.max(slotsForLow, reservedLow));
+
+    // If we overshot, trim from the lower-priority tier (low first)
+    selectedNonHigh = [...pickedMedium, ...pickedLow];
+    if (selectedNonHigh.length > MAX_NON_HIGH) {
+      // Trim excess low entries
+      const excess = selectedNonHigh.length - MAX_NON_HIGH;
+      selectedNonHigh = [...pickedMedium, ...pickedLow.slice(0, pickedLow.length - excess)];
+    }
+  }
+
+  // Merge and sort chronologically
+  const result = [...high, ...selectedNonHigh];
+  result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Edge Function
+// ---------------------------------------------------------------------------
+
 serve(async (req) => {
-  // 1. Handle CORS (if calling from a browser/mobile app later)
+  // 1. Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
   }
@@ -177,7 +234,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing deviceId or date" }), { status: 400 });
     }
 
-    // 3. Initialize Supabase with safety checks
+    // 3. Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -190,7 +247,7 @@ serve(async (req) => {
 
     console.info(`Fetching diary for: ${deviceId} on ${date}`);
 
-    // 4. Query the database
+    // 4. Query all pings for the day (need position_from_home for clustering)
     const { data, error } = await supabase
       .from('locationsvisitednew')
       .select(`
@@ -211,8 +268,14 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    // 5. Return Data
-    return new Response(JSON.stringify(data), {
+    // 5. Cluster, classify, and select
+    const allClusters = clusterPings(data as RawPing[]);
+    const selected = selectClusters(allClusters);
+
+    console.info(`Clustered ${(data as RawPing[]).length} pings into ${allClusters.length} visits, returning ${selected.length}`);
+
+    // 6. Return selected clusters
+    return new Response(JSON.stringify(selected), {
       status: 200,
       headers: { 
         "Content-Type": "application/json",

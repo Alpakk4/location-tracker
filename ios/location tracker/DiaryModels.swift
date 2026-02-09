@@ -7,24 +7,32 @@ import Foundation
 
 // MARK: - Supabase diary-maker Response
 
-/// Raw entry returned by the diary-maker Supabase function.
+/// Raw entry returned by the diary-maker Supabase function (now represents a visit cluster).
 struct DiaryMakerEntry: Codable {
     let entryid: String
     let created_at: String
+    let ended_at: String
+    let cluster_duration_s: Int
     let primary_type: String
     let other_types: [String]
     let motion_type: MotionType
+    let visit_confidence: String   // "high", "medium", or "low"
+    let ping_count: Int
 }
 
 // MARK: - Local Diary Models
 
-/// Represents a single diary entry (one location ping) with user questionnaire answers.
+/// Represents a single diary entry (a visit cluster) with user questionnaire answers.
 struct DiaryEntry: Codable, Identifiable {
-    let id: String              // entryid from Supabase
+    let id: String              // entryid from Supabase (first ping in cluster)
     let createdAt: String
+    let endedAt: String
+    let clusterDurationSeconds: Int
     let primaryType: String
     let otherTypes: [String]
     let motionType: MotionType
+    let visitConfidence: String     // "high", "medium", or "low"
+    let pingCount: Int
     var confirmedPlace: Bool?       // nil = unanswered
     var confirmedActivity: Bool?    // nil = unanswered
     var activityLabel: String       // derived from PlaceActivityMapping
@@ -36,6 +44,17 @@ struct DiaryEntry: Codable, Identifiable {
             return userContext != nil && !userContext!.trimmingCharacters(in: .whitespaces).isEmpty
         }
         return true
+    }
+
+    /// Human-readable duration string, e.g. "12 min", "1h 30min", "< 1 min"
+    var formattedDuration: String {
+        if clusterDurationSeconds < 60 { return "< 1 min" }
+        let hours = clusterDurationSeconds / 3600
+        let minutes = (clusterDurationSeconds % 3600) / 60
+        if hours > 0 {
+            return minutes > 0 ? "\(hours)h \(minutes)min" : "\(hours)h"
+        }
+        return "\(minutes) min"
     }
 }
 
@@ -72,4 +91,7 @@ struct DiarySubmitEntry: Codable {
     let confirmed_activity: Bool
     let user_context: String?
     let motion_type: MotionType
+    let visit_confidence: String
+    let ping_count: Int
+    let cluster_duration_s: Int
 }
