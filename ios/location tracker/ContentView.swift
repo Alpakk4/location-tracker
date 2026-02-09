@@ -71,7 +71,7 @@ struct ContentView: View {
             // MARK: 2. Styled "Send Ping" Button
             Button(action: {
                 if let last = loc.lastLocation {
-                    NetworkingService.shared.sendLocation(last, activity: loc.currentState)
+                    NetworkingService.shared.sendLocation(last, activity: loc.currentMotion, confidence: loc.currentConfidence)
                 }
             }) {
                 HStack {

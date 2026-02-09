@@ -8,12 +8,18 @@
 import SwiftUI
 import CoreLocation
 
+struct MotionType: Codable {
+    var motion: String
+    var confidence: String
+}
+
 struct RequestPayload: Codable {
     var uid: String
     var lat: Double
     var long: Double
-    var home_lat: Double? // new
-    var home_long: Double? // new
+    var home_lat: Double?
+    var home_long: Double?
+    var motion: MotionType
 }
 
 @main

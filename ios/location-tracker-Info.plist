@@ -8,6 +8,8 @@
 	<string>${ENDPOINT}</string>
 	<key>HOME_LOCK_PASSWORD</key>
 	<string>${HOME_LOCK_PASSWORD}</string>
+	<key>NSMotionUsageDescription</key>
+	<string>This app uses motion data to detect your activity type (walking, cycling, driving).</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

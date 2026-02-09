@@ -25,10 +25,9 @@ class NetworkingService {
         }
     }
     
-    func sendLocation(_ location: CLLocation, activity:String) {
-        print("sending location. Activity State \(activity)")
+    func sendLocation(_ location: CLLocation, activity: String, confidence: String) {
+        print("sending location. Activity State \(activity) (\(confidence))")
         
-        // AMMEND THE
         let interval: TimeInterval = {
             switch activity {
             case "WALKING":    return 120  // 2 mins
@@ -40,7 +39,6 @@ class NetworkingService {
                 }()
         
         if let l: Date = last {
-            // don't report within 5 mins
             if (l + interval) > Date.now {
                 print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
                 return
@@ -60,7 +58,8 @@ class NetworkingService {
            lat: location.coordinate.latitude,
            long: location.coordinate.longitude,
            home_lat: UserDefaults.standard.double(forKey: "home_lat"),
-           home_long: UserDefaults.standard.double(forKey: "home_long")))
+           home_long: UserDefaults.standard.double(forKey: "home_long"),
+           motion: MotionType(motion: activity, confidence: confidence)))
         } catch {
             print("json encoding failed", error)
             return
