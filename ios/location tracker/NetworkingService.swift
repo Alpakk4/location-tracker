@@ -9,20 +9,14 @@ class NetworkingService {
     static let shared = NetworkingService()
     var last: Date?
     
-    var apikey: String? {
-        didSet {
-            if apikey == "" { apikey = nil }
-        }
-    }
-    var endpoint: String? {
-        didSet {
-            if endpoint == "" { endpoint = nil }
-        }
-    }
     var uid: String? {
         didSet {
             if uid == "" { uid = nil }
         }
+    }
+    
+    private init() {
+        self.uid = UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
     }
     
     func sendLocation(_ location: CLLocation, activity: String, confidence: String, force: Bool = false) {
@@ -52,8 +46,8 @@ class NetworkingService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer "+(apikey ?? Environment.apikey), forHTTPHeaderField: "Authorization")
-        req.setValue(apikey ?? Environment.apikey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer "+Environment.apikey, forHTTPHeaderField: "Authorization")
+        req.setValue(Environment.apikey, forHTTPHeaderField: "apikey")
         print(location.coordinate.latitude, location.coordinate.longitude)
         do {
             req.httpBody = try JSONEncoder().encode(RequestPayload(uid: uid ?? "anonymous",

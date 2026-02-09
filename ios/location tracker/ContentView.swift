@@ -11,8 +11,6 @@ struct ContentView: View {
     
     // --- Configuration State ---
     @State private var enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
-    @State private var endpoint = UserDefaults.standard.string(forKey: ConfigurationKeys.endpoint) ?? ""
-    @State private var apikey = UserDefaults.standard.string(forKey: ConfigurationKeys.apikey) ?? ""
     @State private var uid = UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? ""
     
     // --- Home Location State ---
@@ -105,16 +103,6 @@ struct ContentView: View {
                     }
                     
                     VStack(spacing: 0) {
-                        ConfigRow(title: "Endpoint", icon: "network", text: $endpoint) {
-                            NetworkingService.shared.endpoint = endpoint
-                            defaults.set(endpoint, forKey: ConfigurationKeys.endpoint)
-                        }
-                        Divider().padding(.leading)
-                        ConfigRow(title: "API Key", icon: "key", text: $apikey) {
-                            NetworkingService.shared.apikey = apikey
-                            defaults.set(apikey, forKey: ConfigurationKeys.apikey)
-                        }
-                        Divider().padding(.leading)
                         ConfigRow(title: "User ID", icon: "person", text: $uid) {
                             NetworkingService.shared.uid = uid
                             defaults.set(uid, forKey: ConfigurationKeys.uid)
