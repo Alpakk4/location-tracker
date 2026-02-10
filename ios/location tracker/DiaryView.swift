@@ -2,7 +2,7 @@
 //  DiaryView.swift
 //  location tracker
 //
-//  Main diary tab: date picker, build diary button, and list of local diary days.
+//  Main diary tab: choose a day to build, then list local diary days.
 //
 
 import SwiftUI
@@ -11,7 +11,6 @@ struct DiaryView: View {
     @EnvironmentObject var diaryService: DiaryService
 
     @State private var selectedDate = Date()
-    @State private var showingDetail: DiaryDay?
     @State private var isSelectingAnotherDate = false
     @State private var lastBuiltDateString: String?
 
@@ -19,12 +18,6 @@ struct DiaryView: View {
 
     private var deviceId: String {
         defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
-    }
-
-    private var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: selectedDate)
     }
     
     private func buildDiary(for date: Date) {
