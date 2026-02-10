@@ -12,6 +12,8 @@ struct DiaryView: View {
 
     @State private var selectedDate = Date()
     @State private var showingDetail: DiaryDay?
+    @State private var isSelectingAnotherDate = false
+    @State private var lastBuiltDateString: String?
 
     private let defaults = UserDefaults.standard
 
@@ -24,41 +26,75 @@ struct DiaryView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: selectedDate)
     }
+    
+    private func buildDiary(for date: Date) {
+        selectedDate = date
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let ds = formatter.string(from: date)
+        
+        // Guard against duplicate calls (e.g., multiple SwiftUI change events)
+        guard lastBuiltDateString != ds else { return }
+        lastBuiltDateString = ds
+        
+        Task {
+            await diaryService.fetchDiary(deviceId: deviceId, date: ds)
+        }
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
 
-                // MARK: Date Picker & Build Button
-                VStack(spacing: 12) {
-                    DatePicker("Diary Date", selection: $selectedDate, displayedComponents: .date)
-                        .datePickerStyle(.compact)
+                // MARK: Day Selection (Auto-build)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("What day shall we complete the diary for?")
+                        .font(.headline)
                         .padding(.horizontal)
-
-                    Button(action: {
-                        Task {
-                            await diaryService.fetchDiary(deviceId: deviceId, date: dateString)
+                        .padding(.top)
+                    
+                    HStack(spacing: 10) {
+                        Button("Today") {
+                            isSelectingAnotherDate = false
+                            buildDiary(for: Date())
                         }
-                    }) {
-                        HStack {
-                            if diaryService.isLoading {
-                                ProgressView()
-                                    .tint(.white)
-                            }
-                            Image(systemName: "book.fill")
-                            Text("BUILD DIARY")
-                                .fontWeight(.bold)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+                        .disabled(diaryService.isLoading)
+                        
+                        Button("Yesterday") {
+                            isSelectingAnotherDate = false
+                            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                            buildDiary(for: yesterday)
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .foregroundColor(.white)
-                        .background(Color.indigo)
-                        .cornerRadius(12)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+                        .disabled(diaryService.isLoading)
+                        
+                        Button("Another date") {
+                            isSelectingAnotherDate.toggle()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.indigo)
+                        .disabled(diaryService.isLoading)
                     }
-                    .disabled(diaryService.isLoading)
                     .padding(.horizontal)
+                    
+                    if isSelectingAnotherDate {
+                        DatePicker(
+                            "Select a date",
+                            selection: $selectedDate,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.graphical)
+                        .disabled(diaryService.isLoading)
+                        .padding(.horizontal)
+                        .onChange(of: selectedDate) { _, newValue in
+                            buildDiary(for: newValue)
+                        }
+                    }
                 }
-                .padding(.top)
 
                 // MARK: Error Banner
                 if let error = diaryService.errorMessage {
@@ -88,7 +124,7 @@ struct DiaryView: View {
                             .foregroundColor(.secondary)
                         Text("No diary entries yet")
                             .foregroundColor(.secondary)
-                        Text("Select a date and tap Build Diary to get started.")
+                        Text("Choose Today, Yesterday, or pick another date to get started.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
