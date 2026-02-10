@@ -12,27 +12,24 @@ struct DiaryView: View {
 
     @State private var selectedDate = Date()
     @State private var isSelectingAnotherDate = false
-    @State private var lastBuiltDateString: String?
+    @State private var selectedDateString: String?
 
     private let defaults = UserDefaults.standard
 
     private var deviceId: String {
         defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
     }
-    
+
     private func buildDiary(for date: Date) {
         selectedDate = date
-        
+
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         let ds = formatter.string(from: date)
-        
-        // Guard against duplicate calls (e.g., multiple SwiftUI change events)
-        guard lastBuiltDateString != ds else { return }
-        lastBuiltDateString = ds
-        
+        selectedDateString = ds
+
         Task {
-            await diaryService.fetchDiary(deviceId: deviceId, date: ds)
+            await diaryService.loadOrFetchDiary(deviceId: deviceId, date: ds)
         }
     }
 
@@ -46,7 +43,7 @@ struct DiaryView: View {
                         .font(.headline)
                         .padding(.horizontal)
                         .padding(.top)
-                    
+
                     HStack(spacing: 10) {
                         Button("Today") {
                             isSelectingAnotherDate = false
@@ -55,7 +52,7 @@ struct DiaryView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.indigo)
                         .disabled(diaryService.isLoading)
-                        
+
                         Button("Yesterday") {
                             isSelectingAnotherDate = false
                             let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -64,7 +61,7 @@ struct DiaryView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.indigo)
                         .disabled(diaryService.isLoading)
-                        
+
                         Button("Another date") {
                             isSelectingAnotherDate.toggle()
                         }
@@ -73,7 +70,7 @@ struct DiaryView: View {
                         .disabled(diaryService.isLoading)
                     }
                     .padding(.horizontal)
-                    
+
                     if isSelectingAnotherDate {
                         DatePicker(
                             "Select a date",
@@ -108,8 +105,35 @@ struct DiaryView: View {
 
                 Divider()
 
-                // MARK: Diary Days List
-                if diaryService.diaryDays.isEmpty {
+                // MARK: Selected Day
+                if let selected = diaryService.selectedDiaryDay, selectedDateString != nil {
+                    if selected.entries.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "book.closed")
+                                .font(.system(size: 40))
+                                .foregroundColor(.secondary)
+                            Text("No diary entries on the selected day")
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                    } else {
+                        List {
+                            Section(header: Text("Selected Day")) {
+                                NavigationLink(destination: DiaryDayDetailView(diaryDay: selected)) {
+                                    DiaryDayRow(day: selected)
+                                }
+                            }
+                        }
+                        .listStyle(.insetGrouped)
+                        .frame(maxHeight: 120)
+                    }
+                } else if diaryService.isLoading {
+                    ProgressView("Loading diary...")
+                        .padding()
+                }
+
+                // MARK: In Progress Diaries
+                if diaryService.diaryDays.isEmpty && selectedDateString == nil {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "book.closed")
@@ -123,11 +147,13 @@ struct DiaryView: View {
                             .multilineTextAlignment(.center)
                     }
                     Spacer()
-                } else {
+                } else if !diaryService.diaryDays.isEmpty {
                     List {
-                        ForEach(diaryService.diaryDays) { day in
-                            NavigationLink(destination: DiaryDayDetailView(diaryDay: day)) {
-                                DiaryDayRow(day: day)
+                        Section(header: Text("In Progress")) {
+                            ForEach(diaryService.diaryDays) { day in
+                                NavigationLink(destination: DiaryDayDetailView(diaryDay: day)) {
+                                    DiaryDayRow(day: day)
+                                }
                             }
                         }
                     }
@@ -149,12 +175,22 @@ struct DiaryDayRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(day.date)
                     .font(.headline)
-                Text("\(day.completedCount)/\(day.entries.count) entries completed")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if day.entries.isEmpty {
+                    Text("No diary entries on the selected day")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("\(day.completedCount)/\(day.entries.count) entries completed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             Spacer()
-            if day.isCompleted {
+            if day.entries.isEmpty {
+                Image(systemName: "minus.circle")
+                    .foregroundColor(.secondary)
+                    .font(.title3)
+            } else if day.isCompleted {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
                     .font(.title3)

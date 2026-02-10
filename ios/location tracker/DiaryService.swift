@@ -12,6 +12,7 @@ import SwiftUI
 class DiaryService: ObservableObject {
 
     @Published var diaryDays: [DiaryDay] = []
+    @Published var selectedDiaryDay: DiaryDay?
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -30,6 +31,21 @@ class DiaryService: ObservableObject {
     func saveDiaryDay(_ day: DiaryDay) {
         storage.saveDiaryDay(day)
         loadLocalDiaries()
+    }
+
+    // MARK: - Local-First Loading
+
+    /// Loads diary from local storage if available; fetches from Supabase only if no local copy exists.
+    func loadOrFetchDiary(deviceId: String, date: String) async {
+        // Check local storage first
+        if let local = storage.loadDiaryDay(date: date), local.deviceId == deviceId {
+            selectedDiaryDay = local
+            return
+        }
+        // No local diary – fetch from server
+        await fetchDiary(deviceId: deviceId, date: date)
+        // After fetch, set selectedDiaryDay from whatever was saved locally
+        selectedDiaryDay = storage.loadDiaryDay(date: date)
     }
 
     // MARK: - Environment Helpers
@@ -128,6 +144,7 @@ class DiaryService: ObservableObject {
             }
 
             loadLocalDiaries()
+            selectedDiaryDay = storage.loadDiaryDay(date: date)
             isLoading = false
 
         } catch {

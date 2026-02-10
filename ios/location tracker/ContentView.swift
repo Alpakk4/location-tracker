@@ -18,10 +18,19 @@ struct ContentView: View {
     @State private var homeLong: Double? = UserDefaults.standard.object(forKey: "home_long") as? Double
     @State private var isHomeSet: Bool = UserDefaults.standard.bool(forKey: "is_home_set")
     
+    // --- User ID Lock State ---
+    @State private var isUidLocked: Bool = !(UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? "").isEmpty
+    @State private var showingUidPasswordAlert = false
+    @State private var uidEnteredPassword = ""
+    
     // --- Alert States ---
     @State private var showingPasswordAlert = false
     @State private var showingSetHomeAlert = false
     @State private var enteredPassword = ""
+    
+    // --- Wobble State ---
+    @State private var homeWobble = false
+    @State private var uidWobble = false
 
     var body: some View {
         mainAppContent
@@ -103,13 +112,43 @@ struct ContentView: View {
                     }
                     
                     VStack(spacing: 0) {
-                        ConfigRow(title: "User ID", icon: "person", text: $uid) {
-                            NetworkingService.shared.uid = uid
-                            defaults.set(uid, forKey: ConfigurationKeys.uid)
+                        HStack {
+                            Image(systemName: isUidLocked ? "lock.fill" : "person")
+                                .foregroundColor(isUidLocked ? .orange : .gray)
+                                .frame(width: 20)
+                            if isUidLocked {
+                                Text(uid)
+                                    .foregroundColor(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                TextField("User ID", text: $uid)
+                                    .onChange(of: uid) {
+                                        NetworkingService.shared.uid = uid
+                                        defaults.set(uid, forKey: ConfigurationKeys.uid)
+                                    }
+                                    .onSubmit {
+                                        if !uid.isEmpty {
+                                            isUidLocked = true
+                                        }
+                                    }
+                            }
+                        }
+                        .padding()
+                        .onLongPressGesture {
+                            if isUidLocked {
+                                showingUidPasswordAlert = true
+                            }
                         }
                     }
                     .background(Color(.systemGray6))
                     .cornerRadius(10)
+                    .offset(x: uidWobble ? -10 : 0)
+                    .animation(
+                        uidWobble
+                            ? .default.repeatCount(5, autoreverses: true).speed(6)
+                            : .default,
+                        value: uidWobble
+                    )
                     .padding(.bottom)
                     
                     // MARK: 4. Home Location Card
@@ -155,6 +194,13 @@ struct ContentView: View {
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(Color(.systemGray4), lineWidth: 1)
                     )
+                    .offset(x: homeWobble ? -10 : 0)
+                    .animation(
+                        homeWobble
+                            ? .default.repeatCount(5, autoreverses: true).speed(6)
+                            : .default,
+                        value: homeWobble
+                    )
                 }
             }
         }
@@ -181,11 +227,39 @@ struct ContentView: View {
                 if enteredPassword == Environment.adminPassword {
                     isHomeSet = false
                     defaults.set(false, forKey: "is_home_set")
+                } else {
+                    // Wrong password – trigger wobble
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        homeWobble = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            homeWobble = false
+                        }
+                    }
                 }
                 enteredPassword = ""
             }
         } message: {
             Text("Enter admin password to reset home coordinates.")
+        }
+        .alert("Unlock User ID", isPresented: $showingUidPasswordAlert) {
+            SecureField("Enter Password", text: $uidEnteredPassword)
+            Button("Cancel", role: .cancel) { uidEnteredPassword = "" }
+            Button("Unlock") {
+                if uidEnteredPassword == Environment.adminPassword {
+                    isUidLocked = false
+                } else {
+                    // Wrong password – trigger wobble
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        uidWobble = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            uidWobble = false
+                        }
+                    }
+                }
+                uidEnteredPassword = ""
+            }
+        } message: {
+            Text("Enter admin password to unlock User ID.")
         }
     }
 }

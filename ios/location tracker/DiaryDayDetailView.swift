@@ -12,59 +12,97 @@ struct DiaryDayDetailView: View {
     @State var diaryDay: DiaryDay
     @State private var submitSuccess = false
     @State private var showingSubmitAlert = false
+    @State private var showingRefreshAlert = false
+
+    private var deviceId: String {
+        UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // MARK: Progress Header
-            HStack {
-                Text("\(diaryDay.completedCount)/\(diaryDay.entries.count) completed")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+            if diaryDay.entries.isEmpty {
+                // MARK: Empty State
                 Spacer()
-                if diaryDay.isCompleted {
-                    Label("Ready to submit", systemImage: "checkmark.seal.fill")
+                VStack(spacing: 8) {
+                    Image(systemName: "book.closed")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No diary entries on the selected day")
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            } else {
+                // MARK: Progress Header
+                HStack {
+                    Text("\(diaryDay.completedCount)/\(diaryDay.entries.count) completed")
                         .font(.subheadline)
-                        .foregroundColor(.green)
-                }
-            }
-            .padding()
-
-            // MARK: Entry List
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(diaryDay.entries.indices, id: \.self) { index in
-                        DiaryEntryCard(entry: $diaryDay.entries[index], onChanged: {
-                            saveProgress()
-                        })
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if diaryDay.isCompleted {
+                        Label("Ready to submit", systemImage: "checkmark.seal.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.green)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 100) // space for submit button
-            }
+                .padding()
 
-            // MARK: Submit Button
-            VStack {
-                Divider()
-                Button(action: { showingSubmitAlert = true }) {
-                    HStack {
-                        if diaryService.isLoading {
-                            ProgressView().tint(.white)
+                // MARK: Entry List
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(diaryDay.entries.indices, id: \.self) { index in
+                            DiaryEntryCard(entry: $diaryDay.entries[index], onChanged: {
+                                saveProgress()
+                            })
                         }
-                        Image(systemName: "arrow.up.circle.fill")
-                        Text("SUBMIT DIARY")
-                            .fontWeight(.bold)
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .foregroundColor(.white)
-                    .background(diaryDay.isCompleted ? Color.green : Color.gray)
-                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    .padding(.bottom, 100) // space for bottom buttons
                 }
-                .disabled(!diaryDay.isCompleted || diaryService.isLoading)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+
+                // MARK: Bottom Buttons
+                VStack {
+                    Divider()
+                    HStack(spacing: 12) {
+                        // Refresh Button
+                        Button(action: { showingRefreshAlert = true }) {
+                            HStack {
+                                Image(systemName: "arrow.counterclockwise.circle.fill")
+                                Text("REFRESH")
+                                    .fontWeight(.bold)
+                            }
+                            .padding()
+                            .foregroundColor(.orange)
+                            .frame(maxWidth: .infinity)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.orange, lineWidth: 2)
+                            )
+                        }
+                        .disabled(diaryService.isLoading)
+
+                        // Submit Button
+                        Button(action: { showingSubmitAlert = true }) {
+                            HStack {
+                                if diaryService.isLoading {
+                                    ProgressView().tint(.white)
+                                }
+                                Image(systemName: "arrow.up.circle.fill")
+                                Text("SUBMIT")
+                                    .fontWeight(.bold)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(.white)
+                            .background(diaryDay.isCompleted ? Color.green : Color.gray)
+                            .cornerRadius(12)
+                        }
+                        .disabled(!diaryDay.isCompleted || diaryService.isLoading)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+                .background(Color(.systemBackground))
             }
-            .background(Color(.systemBackground))
         }
         .navigationTitle(diaryDay.date)
         .navigationBarTitleDisplayMode(.inline)
@@ -83,6 +121,20 @@ struct DiaryDayDetailView: View {
             Button("OK") {}
         } message: {
             Text("Your diary for \(diaryDay.date) has been submitted successfully.")
+        }
+        .alert("Refresh Diary", isPresented: $showingRefreshAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Refresh", role: .destructive) {
+                Task {
+                    await diaryService.fetchDiary(deviceId: deviceId, date: diaryDay.date)
+                    // Reload the refreshed diary into local state
+                    if let refreshed = diaryService.selectedDiaryDay, refreshed.date == diaryDay.date {
+                        diaryDay = refreshed
+                    }
+                }
+            }
+        } message: {
+            Text("This will re-fetch your diary from the server and reset your answers. Continue?")
         }
     }
 
