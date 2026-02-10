@@ -17,6 +17,7 @@ class DiaryService: ObservableObject {
     @Published var errorMessage: String?
 
     private let storage = DiaryStorage.shared
+    private let submittedDatesKey = "diary_submitted_dates"
 
     init() {
         loadLocalDiaries()
@@ -33,6 +34,23 @@ class DiaryService: ObservableObject {
         loadLocalDiaries()
     }
 
+    // MARK: - Submission Tracking
+
+    func recordSubmission(date: String) {
+        var dates = submittedDates()
+        dates.insert(date)
+        UserDefaults.standard.set(Array(dates), forKey: submittedDatesKey)
+    }
+
+    func submittedDates() -> Set<String> {
+        let arr = UserDefaults.standard.stringArray(forKey: submittedDatesKey) ?? []
+        return Set(arr)
+    }
+
+    func hasBeenSubmitted(date: String) -> Bool {
+        submittedDates().contains(date)
+    }
+
     // MARK: - Local-First Loading
 
     /// Loads diary from local storage if available; fetches from Supabase only if no local copy exists.
@@ -44,8 +62,11 @@ class DiaryService: ObservableObject {
         }
         // No local diary – fetch from server
         await fetchDiary(deviceId: deviceId, date: date)
-        // After fetch, set selectedDiaryDay from whatever was saved locally
-        selectedDiaryDay = storage.loadDiaryDay(date: date)
+        // After fetch, set selectedDiaryDay from storage if available.
+        // If fetchDiary already set a transient empty selectedDiaryDay, don't overwrite it.
+        if let saved = storage.loadDiaryDay(date: date) {
+            selectedDiaryDay = saved
+        }
     }
 
     // MARK: - Environment Helpers
@@ -126,6 +147,15 @@ class DiaryService: ObservableObject {
             }
 
             let dayId = "\(deviceId)_\(date)"
+
+            // Don't persist empty diaries — set transient selectedDiaryDay for the view to inspect
+            if entries.isEmpty {
+                let emptyDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: [])
+                selectedDiaryDay = emptyDay
+                loadLocalDiaries()
+                isLoading = false
+                return
+            }
 
             // If a local diary already exists for this date, merge: keep answered entries
             if var existing = storage.loadDiaryDay(date: date), existing.deviceId == deviceId {
@@ -217,7 +247,8 @@ class DiaryService: ObservableObject {
             }
 
             if http.statusCode == 201 {
-                // Success – delete local data
+                // Success – record submission and delete local data
+                recordSubmission(date: diaryDay.date)
                 storage.deleteDiaryDay(date: diaryDay.date)
                 loadLocalDiaries()
                 isLoading = false

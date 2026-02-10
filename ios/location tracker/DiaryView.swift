@@ -13,6 +13,9 @@ struct DiaryView: View {
     @State private var selectedDate = Date()
     @State private var isSelectingAnotherDate = false
     @State private var selectedDateString: String?
+    @State private var showNoEntriesMessage = false
+    @State private var alreadySubmittedDate: String? = nil
+    @State private var todayRefreshTimer: Timer?
 
     private let defaults = UserDefaults.standard
 
@@ -20,17 +23,72 @@ struct DiaryView: View {
         defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
     }
 
-    private func buildDiary(for date: Date) {
-        selectedDate = date
-
+    private func todayDateString() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        let ds = formatter.string(from: date)
-        selectedDateString = ds
+        return formatter.string(from: Date())
+    }
 
+    private func dateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private func buildDiary(for date: Date) {
+        selectedDate = date
+        let ds = dateString(from: date)
+
+        // Dedup guard
+        guard selectedDateString != ds else { return }
+        selectedDateString = ds
+        isSelectingAnotherDate = false  // collapse calendar
+
+        // Check if this date was already submitted
+        if diaryService.hasBeenSubmitted(date: ds) {
+            alreadySubmittedDate = ds  // triggers alert; actual fetch deferred to alert's Continue button
+            return
+        }
+
+        performFetch(for: ds)
+    }
+
+    private func performFetch(for ds: String) {
         Task {
             await diaryService.loadOrFetchDiary(deviceId: deviceId, date: ds)
+            // Check if the result is an empty diary for a non-today date
+            if let selected = diaryService.selectedDiaryDay, selected.entries.isEmpty {
+                let isToday = ds == todayDateString()
+                if !isToday {
+                    diaryService.selectedDiaryDay = nil  // clear so it doesn't show in UI
+                    withAnimation {
+                        showNoEntriesMessage = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        withAnimation {
+                            showNoEntriesMessage = false
+                        }
+                    }
+                }
+            }
+            // Start periodic refresh if today is selected
+            startTodayRefreshIfNeeded(ds)
         }
+    }
+
+    private func startTodayRefreshIfNeeded(_ ds: String) {
+        stopTodayRefresh()
+        guard ds == todayDateString() else { return }
+        todayRefreshTimer = Timer.scheduledTimer(withTimeInterval: 1300, repeats: true) { _ in
+            Task { @MainActor in
+                await diaryService.fetchDiary(deviceId: deviceId, date: ds)
+            }
+        }
+    }
+
+    private func stopTodayRefresh() {
+        todayRefreshTimer?.invalidate()
+        todayRefreshTimer = nil
     }
 
     var body: some View {
@@ -103,6 +161,17 @@ struct DiaryView: View {
                     .padding(.horizontal)
                 }
 
+                // MARK: No Entries Toast
+                if showNoEntriesMessage {
+                    Text("Selected day has no entries, try another")
+                        .font(.subheadline)
+                        .padding()
+                        .background(Color.orange.opacity(0.15))
+                        .cornerRadius(10)
+                        .transition(.opacity)
+                        .padding(.horizontal)
+                }
+
                 Divider()
 
                 // MARK: Selected Day
@@ -161,6 +230,23 @@ struct DiaryView: View {
                 }
             }
             .navigationTitle("Diary")
+            .onDisappear {
+                stopTodayRefresh()
+            }
+            .alert("Already Submitted", isPresented: .init(
+                get: { alreadySubmittedDate != nil },
+                set: { if !$0 { alreadySubmittedDate = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { alreadySubmittedDate = nil }
+                Button("Continue") {
+                    if let ds = alreadySubmittedDate {
+                        alreadySubmittedDate = nil
+                        performFetch(for: ds)
+                    }
+                }
+            } message: {
+                Text("Completing diary for a day you have already submitted — you're now adding another entry for day \(alreadySubmittedDate ?? "")")
+            }
         }
     }
 }
