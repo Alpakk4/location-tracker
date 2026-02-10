@@ -9,7 +9,7 @@ import SwiftUI
 
 struct DiaryDayDetailView: View {
     @EnvironmentObject var diaryService: DiaryService
-    @Environment(\.dismiss) var dismiss
+    @SwiftUI.Environment(\.dismiss) var dismiss
     @State var diaryDay: DiaryDay
     @State private var submitSuccess = false
     @State private var showingSubmitAlert = false
