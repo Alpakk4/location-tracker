@@ -23,6 +23,11 @@ struct DiaryView: View {
         defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
     }
 
+    /// In Progress list excludes the currently selected day to avoid duplication
+    private var inProgressDays: [DiaryDay] {
+        diaryService.diaryDays.filter { $0.date != selectedDateString }
+    }
+
     private func todayDateString() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -175,8 +180,20 @@ struct DiaryView: View {
                 Divider()
 
                 // MARK: Selected Day
-                if let selected = diaryService.selectedDiaryDay, selectedDateString != nil {
-                    if selected.entries.isEmpty {
+                if let ds = selectedDateString {
+                    let isSubmitted = diaryService.hasBeenSubmitted(date: ds) && diaryService.selectedDiaryDay == nil
+                    if let selected = diaryService.selectedDiaryDay, !selected.entries.isEmpty {
+                        NavigationLink(destination: DiaryDayDetailView(diaryDay: selected)) {
+                            SelectedDayCard(day: selected, dateString: ds, isSubmitted: false)
+                        }
+                        .buttonStyle(.plain)
+                    } else if isSubmitted {
+                        SelectedDayCard(day: nil, dateString: ds, isSubmitted: true)
+                    } else if diaryService.isLoading {
+                        ProgressView("Loading diary...")
+                            .padding()
+                    } else if diaryService.selectedDiaryDay != nil {
+                        // Empty diary (e.g. today waiting for entries)
                         VStack(spacing: 8) {
                             Image(systemName: "book.closed")
                                 .font(.system(size: 40))
@@ -185,16 +202,6 @@ struct DiaryView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                    } else {
-                        List {
-                            Section(header: Text("Selected Day")) {
-                                NavigationLink(destination: DiaryDayDetailView(diaryDay: selected)) {
-                                    DiaryDayRow(day: selected)
-                                }
-                            }
-                        }
-                        .listStyle(.insetGrouped)
-                        .frame(maxHeight: 120)
                     }
                 } else if diaryService.isLoading {
                     ProgressView("Loading diary...")
@@ -202,7 +209,7 @@ struct DiaryView: View {
                 }
 
                 // MARK: In Progress Diaries
-                if diaryService.diaryDays.isEmpty && selectedDateString == nil {
+                if inProgressDays.isEmpty && selectedDateString == nil {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "book.closed")
@@ -216,11 +223,14 @@ struct DiaryView: View {
                             .multilineTextAlignment(.center)
                     }
                     Spacer()
-                } else if !diaryService.diaryDays.isEmpty {
+                } else if !inProgressDays.isEmpty {
                     List {
                         Section(header: Text("In Progress")) {
-                            ForEach(diaryService.diaryDays) { day in
-                                NavigationLink(destination: DiaryDayDetailView(diaryDay: day)) {
+                            ForEach(inProgressDays) { day in
+                                Button {
+                                    diaryService.selectedDiaryDay = day
+                                    selectedDateString = day.date
+                                } label: {
                                     DiaryDayRow(day: day)
                                 }
                             }
@@ -230,6 +240,21 @@ struct DiaryView: View {
                 }
             }
             .navigationTitle("Diary")
+            .onAppear {
+                diaryService.loadLocalDiaries()
+                if let ds = selectedDateString {
+                    if let fresh = DiaryStorage.shared.loadDiaryDay(date: ds) {
+                        diaryService.selectedDiaryDay = fresh
+                    } else if diaryService.hasBeenSubmitted(date: ds) {
+                        // Diary was submitted -- keep selectedDateString so card shows "Submitted" badge
+                        diaryService.selectedDiaryDay = nil
+                    } else {
+                        // Diary doesn't exist and wasn't submitted -- clear
+                        diaryService.selectedDiaryDay = nil
+                        selectedDateString = nil
+                    }
+                }
+            }
             .onDisappear {
                 stopTodayRefresh()
             }
@@ -265,6 +290,10 @@ struct DiaryDayRow: View {
                     Text("No diary entries on the selected day")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                } else if day.isCompleted {
+                    Text("Ready to submit")
+                        .font(.caption)
+                        .foregroundColor(.green)
                 } else {
                     Text("\(day.completedCount)/\(day.entries.count) entries completed")
                         .font(.caption)
@@ -277,7 +306,7 @@ struct DiaryDayRow: View {
                     .foregroundColor(.secondary)
                     .font(.title3)
             } else if day.isCompleted {
-                Image(systemName: "checkmark.circle.fill")
+                Image(systemName: "checkmark.seal.fill")
                     .foregroundColor(.green)
                     .font(.title3)
             } else {
@@ -287,5 +316,73 @@ struct DiaryDayRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Selected Day Card
+
+struct SelectedDayCard: View {
+    let day: DiaryDay?
+    let dateString: String
+    let isSubmitted: Bool
+
+    private var statusText: String {
+        if isSubmitted { return "Submitted" }
+        guard let day else { return "Loading..." }
+        if day.entries.isEmpty { return "No Entries" }
+        if day.isCompleted { return "Ready to Submit" }
+        if day.completedCount == 0 { return "New" }
+        return "In Progress (\(day.completedCount)/\(day.entries.count))"
+    }
+
+    private var statusColor: Color {
+        if isSubmitted { return .indigo }
+        guard let day else { return .secondary }
+        if day.isCompleted { return .green }
+        if day.completedCount > 0 { return .orange }
+        return .secondary
+    }
+
+    private var statusIcon: String {
+        if isSubmitted { return "checkmark.seal.fill" }
+        guard let day else { return "circle" }
+        if day.isCompleted { return "checkmark.seal.fill" }
+        if day.completedCount > 0 { return "circle.dotted" }
+        return "circle"
+    }
+
+    private var progress: Double {
+        guard let day, !day.entries.isEmpty else { return isSubmitted ? 1.0 : 0.0 }
+        return Double(day.completedCount) / Double(day.entries.count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(dateString)
+                    .font(.title3)
+                    .bold()
+                Spacer()
+                Label(statusText, systemImage: statusIcon)
+                    .font(.caption)
+                    .bold()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundColor(.white)
+                    .background(statusColor)
+                    .cornerRadius(8)
+            }
+            ProgressView(value: progress)
+                .tint(statusColor)
+            Text(isSubmitted
+                 ? "Diary submitted successfully"
+                 : "\(day?.completedCount ?? 0)/\(day?.entries.count ?? 0) entries completed")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
+        .padding(.horizontal)
     }
 }

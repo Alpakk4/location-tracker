@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DiaryDayDetailView: View {
     @EnvironmentObject var diaryService: DiaryService
+    @Environment(\.dismiss) var dismiss
     @State var diaryDay: DiaryDay
     @State private var submitSuccess = false
     @State private var showingSubmitAlert = false
@@ -118,7 +119,7 @@ struct DiaryDayDetailView: View {
             Text("Submit all \(diaryDay.entries.count) completed entries for \(diaryDay.date)?")
         }
         .alert("Diary Submitted", isPresented: $submitSuccess) {
-            Button("OK") {}
+            Button("OK") { dismiss() }
         } message: {
             Text("Your diary for \(diaryDay.date) has been submitted successfully.")
         }
