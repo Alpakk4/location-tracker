@@ -1,5 +1,6 @@
 // diary-submit: receives completed diary entries from the iOS app and updates
-// the pre-populated rows in the diary_completed table. Returns 200 on success.
+// the pre-populated visit rows in the diary_visits table, then marks the
+// parent diary as submitted. Returns 200 on success.
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
@@ -57,7 +58,28 @@ serve(async (req) => {
       `Submitting diary for device: ${deviceId}, date: ${date}, entries: ${entries.length}`
     )
 
-    // 3. Update pre-populated rows with user answers
+    // 3. Look up the diary row for this device + date
+    const { data: diary, error: diaryError } = await supabase
+      .from("diaries")
+      .select("id")
+      .eq("deviceid", deviceId)
+      .eq("diary_date", date)
+      .single()
+
+    if (diaryError || !diary) {
+      console.error("Diary lookup error:", diaryError)
+      return new Response(
+        JSON.stringify({ error: "Diary not found for this device and date" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
+    }
+
+    const diaryId = diary.id
+
+    // 4. Update each visit row with user answers
     for (const entry of entries as {
       source_entryid: string
       activity_label: string
@@ -66,16 +88,15 @@ serve(async (req) => {
       user_context: string | null
     }[]) {
       const { error } = await supabase
-        .from("diary_completed")
+        .from("diary_visits")
         .update({
           activity_label: entry.activity_label,
           confirmed_place: entry.confirmed_place,
           confirmed_activity: entry.confirmed_activity,
           user_context: entry.user_context,
         })
+        .eq("diary_id", diaryId)
         .eq("visit_id", entry.source_entryid)
-        .eq("deviceid", deviceId)
-        .eq("diary_date", date)
 
       if (error) {
         console.error(`Update error for visit ${entry.source_entryid}:`, error)
@@ -86,7 +107,18 @@ serve(async (req) => {
       }
     }
 
-    // 4. Return 200 OK
+    // 5. Mark the diary as submitted
+    const { error: submitError } = await supabase
+      .from("diaries")
+      .update({ submitted_at: new Date().toISOString() })
+      .eq("id", diaryId)
+
+    if (submitError) {
+      console.error("Diary submit timestamp error:", submitError)
+      // Non-fatal: visits are already updated
+    }
+
+    // 6. Return 200 OK
     return new Response(
       JSON.stringify({ success: true, updated: entries.length }),
       {

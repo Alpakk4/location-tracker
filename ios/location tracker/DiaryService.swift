@@ -205,16 +205,10 @@ class DiaryService: ObservableObject {
         let submitEntries = diaryDay.entries.map { entry in
             DiarySubmitEntry(
                 source_entryid: entry.id,
-                entry_ids: entry.entryIds,
-                primary_type: entry.primaryType,
                 activity_label: entry.activityLabel,
                 confirmed_place: entry.confirmedPlace ?? false,
                 confirmed_activity: entry.confirmedActivity ?? false,
-                user_context: entry.userContext,
-                motion_type: entry.motionType,
-                visit_confidence: entry.visitConfidence,
-                ping_count: entry.pingCount,
-                cluster_duration_s: entry.clusterDurationSeconds
+                user_context: entry.userContext
             )
         }
 

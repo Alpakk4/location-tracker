@@ -276,45 +276,94 @@ serve(async (req) => {
 
     console.info(`Clustered ${(data as RawPing[]).length} pings into ${allClusters.length} visits, returning ${selected.length}`);
 
-    // 6. Pre-populate diary_completed with skeleton rows
-    // Check which visits already exist in the DB for this device+date
-    const { data: existing } = await supabase
-      .from('diary_completed')
-      .select('visit_id, confirmed_place')
-      .eq('deviceid', deviceId)
-      .eq('diary_date', date);
+    // 6. Pre-populate normalized diary tables (diaries -> diary_visits -> diary_visit_entries)
 
-    const existingVisitIds = new Set((existing ?? []).map((r: { visit_id: string }) => r.visit_id));
+    // 6a. Upsert the diary row for this device+date
+    const { data: diaryRow, error: diaryError } = await supabase
+      .from('diaries')
+      .upsert(
+        { deviceid: deviceId, diary_date: date },
+        { onConflict: 'deviceid,diary_date' }
+      )
+      .select('id')
+      .single();
 
-    // Only insert rows for NEW visits (not already in DB)
-    const newRows = selected
-      .filter(c => !existingVisitIds.has(c.entryid))
-      .map(c => ({
-        visit_id: c.entryid,
-        deviceid: deviceId,
-        diary_date: date,
-        source_entryid: c.entryid,
-        entry_ids: c.entry_ids,
-        primary_type: c.primary_type,
-        other_types: c.other_types,
-        motion_type: c.motion_type,
-        visit_confidence: c.visit_confidence,
-        ping_count: c.ping_count,
-        cluster_duration_s: c.cluster_duration_s,
-        activity_label: null,
-        confirmed_place: null,
-        confirmed_activity: null,
-        user_context: null,
-      }));
+    if (diaryError || !diaryRow) {
+      console.error("Diary upsert error:", diaryError);
+      // Non-fatal: still return clusters to iOS even if DB write fails
+    }
 
-    if (newRows.length > 0) {
-      const { error: insertError } = await supabase
-        .from('diary_completed')
-        .insert(newRows);
-      if (insertError) {
-        console.error("Pre-populate error:", insertError);
-      } else {
-        console.info(`Pre-populated ${newRows.length} new visit rows in diary_completed`);
+    if (diaryRow) {
+      const diaryId = diaryRow.id;
+
+      // 6b. Check which visits already exist for this diary
+      const { data: existingVisits } = await supabase
+        .from('diary_visits')
+        .select('visit_id')
+        .eq('diary_id', diaryId);
+
+      const existingVisitIds = new Set(
+        (existingVisits ?? []).map((r: { visit_id: string }) => r.visit_id)
+      );
+
+      // 6c. Insert new visit rows
+      const newClusters = selected.filter(c => !existingVisitIds.has(c.entryid));
+
+      if (newClusters.length > 0) {
+        const visitRows = newClusters.map(c => ({
+          diary_id: diaryId,
+          visit_id: c.entryid,
+          primary_type: c.primary_type,
+          other_types: c.other_types,
+          motion_type: c.motion_type,
+          visit_confidence: c.visit_confidence,
+          ping_count: c.ping_count,
+          cluster_duration_s: c.cluster_duration_s,
+          started_at: c.created_at,
+          ended_at: c.ended_at,
+          activity_label: null,
+          confirmed_place: null,
+          confirmed_activity: null,
+          user_context: null,
+        }));
+
+        const { data: insertedVisits, error: visitInsertError } = await supabase
+          .from('diary_visits')
+          .insert(visitRows)
+          .select('id, visit_id');
+
+        if (visitInsertError) {
+          console.error("Visit insert error:", visitInsertError);
+        } else {
+          console.info(`Pre-populated ${insertedVisits.length} new visit rows`);
+
+          // 6d. Insert diary_visit_entries linking visits to their constituent pings
+          const entryRows: { diary_visit_id: string; entry_id: string; position_in_cluster: number }[] = [];
+
+          for (const iv of insertedVisits) {
+            const cluster = newClusters.find(c => c.entryid === iv.visit_id);
+            if (cluster) {
+              cluster.entry_ids.forEach((eid, idx) => {
+                entryRows.push({
+                  diary_visit_id: iv.id,
+                  entry_id: eid,
+                  position_in_cluster: idx,
+                });
+              });
+            }
+          }
+
+          if (entryRows.length > 0) {
+            const { error: entryInsertError } = await supabase
+              .from('diary_visit_entries')
+              .insert(entryRows);
+            if (entryInsertError) {
+              console.error("Visit-entries insert error:", entryInsertError);
+            } else {
+              console.info(`Linked ${entryRows.length} pings to visits`);
+            }
+          }
+        }
       }
     }
 

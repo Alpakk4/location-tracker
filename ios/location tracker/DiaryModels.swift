@@ -87,14 +87,8 @@ struct DiarySubmitPayload: Codable {
 
 struct DiarySubmitEntry: Codable {
     let source_entryid: String
-    let entry_ids: [String]
-    let primary_type: String
     let activity_label: String
     let confirmed_place: Bool
     let confirmed_activity: Bool
     let user_context: String?
-    let motion_type: MotionType
-    let visit_confidence: String
-    let ping_count: Int
-    let cluster_duration_s: Int
 }
