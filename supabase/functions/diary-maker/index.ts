@@ -28,6 +28,7 @@ interface RawPing {
 
 interface ClusterResult {
   entryid: string;
+  entry_ids: string[];
   created_at: string;
   ended_at: string;
   cluster_duration_s: number;
@@ -158,6 +159,7 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 
     return {
       entryid: firstPing.entryid,
+      entry_ids: pingsInCluster.map(p => p.entryid),
       created_at: firstPing.created_at,
       ended_at: lastPing.created_at,
       cluster_duration_s: durationSeconds(firstPing.created_at, lastPing.created_at),
@@ -274,7 +276,49 @@ serve(async (req) => {
 
     console.info(`Clustered ${(data as RawPing[]).length} pings into ${allClusters.length} visits, returning ${selected.length}`);
 
-    // 6. Return selected clusters
+    // 6. Pre-populate diary_completed with skeleton rows
+    // Check which visits already exist in the DB for this device+date
+    const { data: existing } = await supabase
+      .from('diary_completed')
+      .select('visit_id, confirmed_place')
+      .eq('deviceid', deviceId)
+      .eq('diary_date', date);
+
+    const existingVisitIds = new Set((existing ?? []).map((r: { visit_id: string }) => r.visit_id));
+
+    // Only insert rows for NEW visits (not already in DB)
+    const newRows = selected
+      .filter(c => !existingVisitIds.has(c.entryid))
+      .map(c => ({
+        visit_id: c.entryid,
+        deviceid: deviceId,
+        diary_date: date,
+        source_entryid: c.entryid,
+        entry_ids: c.entry_ids,
+        primary_type: c.primary_type,
+        other_types: c.other_types,
+        motion_type: c.motion_type,
+        visit_confidence: c.visit_confidence,
+        ping_count: c.ping_count,
+        cluster_duration_s: c.cluster_duration_s,
+        activity_label: null,
+        confirmed_place: null,
+        confirmed_activity: null,
+        user_context: null,
+      }));
+
+    if (newRows.length > 0) {
+      const { error: insertError } = await supabase
+        .from('diary_completed')
+        .insert(newRows);
+      if (insertError) {
+        console.error("Pre-populate error:", insertError);
+      } else {
+        console.info(`Pre-populated ${newRows.length} new visit rows in diary_completed`);
+      }
+    }
+
+    // 7. Return selected clusters to iOS
     return new Response(JSON.stringify(selected), {
       status: 200,
       headers: { 

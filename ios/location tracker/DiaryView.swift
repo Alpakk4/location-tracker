@@ -15,7 +15,6 @@ struct DiaryView: View {
     @State private var selectedDateString: String?
     @State private var showNoEntriesMessage = false
     @State private var alreadySubmittedDate: String? = nil
-    @State private var todayRefreshTimer: Timer?
 
     private let defaults = UserDefaults.standard
 
@@ -26,12 +25,6 @@ struct DiaryView: View {
     /// In Progress list excludes the currently selected day to avoid duplication
     private var inProgressDays: [DiaryDay] {
         diaryService.diaryDays.filter { $0.date != selectedDateString }
-    }
-
-    private func todayDateString() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
     }
 
     private func dateString(from date: Date) -> String {
@@ -61,39 +54,14 @@ struct DiaryView: View {
     private func performFetch(for ds: String) {
         Task {
             await diaryService.loadOrFetchDiary(deviceId: deviceId, date: ds)
-            // Check if the result is an empty diary for a non-today date
             if let selected = diaryService.selectedDiaryDay, selected.entries.isEmpty {
-                let isToday = ds == todayDateString()
-                if !isToday {
-                    diaryService.selectedDiaryDay = nil  // clear so it doesn't show in UI
-                    withAnimation {
-                        showNoEntriesMessage = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                        withAnimation {
-                            showNoEntriesMessage = false
-                        }
-                    }
+                diaryService.selectedDiaryDay = nil
+                withAnimation { showNoEntriesMessage = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation { showNoEntriesMessage = false }
                 }
             }
-            // Start periodic refresh if today is selected
-            startTodayRefreshIfNeeded(ds)
         }
-    }
-
-    private func startTodayRefreshIfNeeded(_ ds: String) {
-        stopTodayRefresh()
-        guard ds == todayDateString() else { return }
-        todayRefreshTimer = Timer.scheduledTimer(withTimeInterval: 1300, repeats: true) { _ in
-            Task { @MainActor in
-                await diaryService.fetchDiary(deviceId: deviceId, date: ds)
-            }
-        }
-    }
-
-    private func stopTodayRefresh() {
-        todayRefreshTimer?.invalidate()
-        todayRefreshTimer = nil
     }
 
     var body: some View {
@@ -108,14 +76,6 @@ struct DiaryView: View {
                         .padding(.top)
 
                     HStack(spacing: 10) {
-                        Button("Today") {
-                            isSelectingAnotherDate = false
-                            buildDiary(for: Date())
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.indigo)
-                        .disabled(diaryService.isLoading)
-
                         Button("Yesterday") {
                             isSelectingAnotherDate = false
                             let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -138,6 +98,7 @@ struct DiaryView: View {
                         DatePicker(
                             "Select a date",
                             selection: $selectedDate,
+                            in: ...Calendar.current.date(byAdding: .day, value: -1, to: Date())!,
                             displayedComponents: .date
                         )
                         .datePickerStyle(.graphical)
@@ -217,7 +178,7 @@ struct DiaryView: View {
                             .foregroundColor(.secondary)
                         Text("No diary entries yet")
                             .foregroundColor(.secondary)
-                        Text("Choose Today, Yesterday, or pick another date to get started.")
+                        Text("Choose Yesterday or pick another date to get started.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -254,9 +215,6 @@ struct DiaryView: View {
                         selectedDateString = nil
                     }
                 }
-            }
-            .onDisappear {
-                stopTodayRefresh()
             }
             .alert("Already Submitted", isPresented: .init(
                 get: { alreadySubmittedDate != nil },

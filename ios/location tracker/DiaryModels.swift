@@ -10,6 +10,7 @@ import Foundation
 /// Raw entry returned by the diary-maker Supabase function (now represents a visit cluster).
 struct DiaryMakerEntry: Codable {
     let entryid: String
+    let entry_ids: [String]
     let created_at: String
     let ended_at: String
     let cluster_duration_s: Int
@@ -25,6 +26,7 @@ struct DiaryMakerEntry: Codable {
 /// Represents a single diary entry (a visit cluster) with user questionnaire answers.
 struct DiaryEntry: Codable, Identifiable {
     let id: String              // entryid from Supabase (first ping in cluster)
+    let entryIds: [String]      // all ping entryids in this visit cluster
     let createdAt: String
     let endedAt: String
     let clusterDurationSeconds: Int
@@ -85,6 +87,7 @@ struct DiarySubmitPayload: Codable {
 
 struct DiarySubmitEntry: Codable {
     let source_entryid: String
+    let entry_ids: [String]
     let primary_type: String
     let activity_label: String
     let confirmed_place: Bool

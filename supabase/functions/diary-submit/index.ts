@@ -1,5 +1,5 @@
-// diary-submit: receives completed diary entries from the iOS app and inserts them
-// into the diary_completed table. Returns 201 on success.
+// diary-submit: receives completed diary entries from the iOS app and updates
+// the pre-populated rows in the diary_completed table. Returns 200 on success.
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
@@ -57,48 +57,43 @@ serve(async (req) => {
       `Submitting diary for device: ${deviceId}, date: ${date}, entries: ${entries.length}`
     )
 
-    // 3. Transform entries for insertion
-    const rows = entries.map(
-      (entry: {
-        source_entryid: string
-        primary_type: string
-        activity_label: string
-        confirmed_place: boolean
-        confirmed_activity: boolean
-        user_context: string | null
-        motion_type: { motion: string; confidence: string }
-      }) => ({
-        source_entryid: entry.source_entryid,
-        deviceid: deviceId,
-        diary_date: date,
-        primary_type: entry.primary_type,
-        activity_label: entry.activity_label,
-        confirmed_place: entry.confirmed_place,
-        confirmed_activity: entry.confirmed_activity,
-        user_context: entry.user_context,
-        motion_type: entry.motion_type,
-      })
-    )
+    // 3. Update pre-populated rows with user answers
+    for (const entry of entries as {
+      source_entryid: string
+      activity_label: string
+      confirmed_place: boolean
+      confirmed_activity: boolean
+      user_context: string | null
+    }[]) {
+      const { error } = await supabase
+        .from("diary_completed")
+        .update({
+          activity_label: entry.activity_label,
+          confirmed_place: entry.confirmed_place,
+          confirmed_activity: entry.confirmed_activity,
+          user_context: entry.user_context,
+        })
+        .eq("visit_id", entry.source_entryid)
+        .eq("deviceid", deviceId)
+        .eq("diary_date", date)
 
-    // 4. Insert into diary_completed
-    const { data, error } = await supabase
-      .from("diary_completed")
-      .insert(rows)
-      .select()
-
-    if (error) {
-      console.error("Supabase Insert Error:", error)
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+      if (error) {
+        console.error(`Update error for visit ${entry.source_entryid}:`, error)
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
     }
 
-    // 5. Return 201 Created
-    return new Response(JSON.stringify({ success: true, inserted: data?.length ?? 0 }), {
-      status: 201,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    // 4. Return 200 OK
+    return new Response(
+      JSON.stringify({ success: true, updated: entries.length }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    )
   } catch (err) {
     console.error("Unexpected Error:", err.message)
     return new Response(

@@ -131,6 +131,7 @@ class DiaryService: ObservableObject {
             let entries: [DiaryEntry] = rawEntries.map { raw in
                 DiaryEntry(
                     id: raw.entryid,
+                    entryIds: raw.entry_ids,
                     createdAt: raw.created_at,
                     endedAt: raw.ended_at,
                     clusterDurationSeconds: raw.cluster_duration_s,
@@ -204,6 +205,7 @@ class DiaryService: ObservableObject {
         let submitEntries = diaryDay.entries.map { entry in
             DiarySubmitEntry(
                 source_entryid: entry.id,
+                entry_ids: entry.entryIds,
                 primary_type: entry.primaryType,
                 activity_label: entry.activityLabel,
                 confirmed_place: entry.confirmedPlace ?? false,
@@ -246,7 +248,7 @@ class DiaryService: ObservableObject {
                 return false
             }
 
-            if http.statusCode == 201 {
+            if http.statusCode == 200 {
                 // Success – record submission and delete local data
                 recordSubmission(date: diaryDay.date)
                 storage.deleteDiaryDay(date: diaryDay.date)
