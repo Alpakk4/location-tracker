@@ -143,8 +143,8 @@ struct DiaryView: View {
                         .datePickerStyle(.graphical)
                         .disabled(diaryService.isLoading)
                         .padding(.horizontal)
-                        .onChange(of: selectedDate) { newValue in
-                            buildDiary(for: newValue)
+                        .onChange(of: selectedDate) {
+                            buildDiary(for: selectedDate)
                         }
                     }
                 }
