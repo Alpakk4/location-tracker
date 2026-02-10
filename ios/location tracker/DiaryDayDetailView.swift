@@ -116,7 +116,7 @@ struct DiaryDayDetailView: View {
                 }
             }
         } message: {
-            Text("Submit all \(diaryDay.entries.count) completed entries for \(diaryDay.date)?")
+            Text("Submit all \(diaryDay.entries.count) completed entries for \(diaryDay.date)? - Once submitted, you cannot edit the diary.")
         }
         .alert("Diary Submitted", isPresented: $submitSuccess) {
             Button("OK") { dismiss() }

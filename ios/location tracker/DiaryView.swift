@@ -333,7 +333,7 @@ struct SelectedDayCard: View {
             ProgressView(value: progress)
                 .tint(statusColor)
             Text(isSubmitted
-                 ? "Diary submitted successfully"
+                 ? "Diary already submitted successfully"
                  : "\(day?.completedCount ?? 0)/\(day?.entries.count ?? 0) entries completed")
                 .font(.caption)
                 .foregroundColor(.secondary)
