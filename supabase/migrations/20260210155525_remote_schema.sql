@@ -47,10 +47,6 @@ alter table "public"."diary_completed" add constraint "diary_completed_visit_uni
 
 alter table "public"."places" add constraint "places_place_id_key" UNIQUE using index "places_place_id_key";
 
-create type "public"."geometry_dump" as ("path" integer[], "geom" public.geometry);
-
-create type "public"."valid_detail" as ("valid" boolean, "reason" character varying, "location" public.geometry);
-
 grant delete on table "public"."places" to "anon";
 
 grant insert on table "public"."places" to "anon";
@@ -93,61 +89,6 @@ grant truncate on table "public"."places" to "service_role";
 
 grant update on table "public"."places" to "service_role";
 
-grant delete on table "public"."spatial_ref_sys" to "anon";
-
-grant insert on table "public"."spatial_ref_sys" to "anon";
-
-grant references on table "public"."spatial_ref_sys" to "anon";
-
-grant select on table "public"."spatial_ref_sys" to "anon";
-
-grant trigger on table "public"."spatial_ref_sys" to "anon";
-
-grant truncate on table "public"."spatial_ref_sys" to "anon";
-
-grant update on table "public"."spatial_ref_sys" to "anon";
-
-grant delete on table "public"."spatial_ref_sys" to "authenticated";
-
-grant insert on table "public"."spatial_ref_sys" to "authenticated";
-
-grant references on table "public"."spatial_ref_sys" to "authenticated";
-
-grant select on table "public"."spatial_ref_sys" to "authenticated";
-
-grant trigger on table "public"."spatial_ref_sys" to "authenticated";
-
-grant truncate on table "public"."spatial_ref_sys" to "authenticated";
-
-grant update on table "public"."spatial_ref_sys" to "authenticated";
-
-grant delete on table "public"."spatial_ref_sys" to "postgres";
-
-grant insert on table "public"."spatial_ref_sys" to "postgres";
-
-grant references on table "public"."spatial_ref_sys" to "postgres";
-
-grant select on table "public"."spatial_ref_sys" to "postgres";
-
-grant trigger on table "public"."spatial_ref_sys" to "postgres";
-
-grant truncate on table "public"."spatial_ref_sys" to "postgres";
-
-grant update on table "public"."spatial_ref_sys" to "postgres";
-
-grant delete on table "public"."spatial_ref_sys" to "service_role";
-
-grant insert on table "public"."spatial_ref_sys" to "service_role";
-
-grant references on table "public"."spatial_ref_sys" to "service_role";
-
-grant select on table "public"."spatial_ref_sys" to "service_role";
-
-grant trigger on table "public"."spatial_ref_sys" to "service_role";
-
-grant truncate on table "public"."spatial_ref_sys" to "service_role";
-
-grant update on table "public"."spatial_ref_sys" to "service_role";
 
 
   create policy "Allow anonymous selects"
@@ -175,10 +116,4 @@ with check (true);
   for insert
   to public
 with check (true);
-
-
-CREATE TRIGGER protect_buckets_delete BEFORE DELETE ON storage.buckets FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
-
-CREATE TRIGGER protect_objects_delete BEFORE DELETE ON storage.objects FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
-
 
