@@ -136,10 +136,10 @@ class DiaryService: ObservableObject {
                 return
             }
 
-            let rawEntries = try JSONDecoder().decode([DiaryMakerEntry].self, from: data)
+            let makerResponse = try JSONDecoder().decode(DiaryMakerResponse.self, from: data)
 
             // Transform raw entries (visit clusters) into DiaryEntry with activity labels
-            let entries: [DiaryEntry] = rawEntries.map { raw in
+            let entries: [DiaryEntry] = makerResponse.visits.map { raw in
                 DiaryEntry(
                     id: raw.entryid,
                     entryIds: raw.entry_ids,
@@ -158,30 +158,60 @@ class DiaryService: ObservableObject {
                 )
             }
 
+            // Transform raw journeys into DiaryJourney
+            let journeys: [DiaryJourney] = makerResponse.journeys.map { raw in
+                DiaryJourney(
+                    id: raw.journey_id,
+                    entryIds: raw.entry_ids,
+                    fromVisitId: raw.from_visit_id,
+                    toVisitId: raw.to_visit_id,
+                    primaryTransport: raw.primary_transport,
+                    transportProportions: raw.transport_proportions,
+                    startedAt: raw.started_at,
+                    endedAt: raw.ended_at,
+                    journeyDurationSeconds: raw.journey_duration_s,
+                    pingCount: raw.ping_count,
+                    confirmedTransport: nil,
+                    travelReason: nil
+                )
+            }
+
             let dayId = "\(deviceId)_\(date)"
 
             // Don't persist empty diaries — set transient selectedDiaryDay for the view to inspect
-            if entries.isEmpty {
-                let emptyDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: [])
+            if entries.isEmpty && journeys.isEmpty {
+                let emptyDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: [], journeys: [])
                 selectedDiaryDay = emptyDay
                 loadLocalDiaries()
                 isLoading = false
                 return
             }
 
-            // If a local diary already exists for this date, merge: keep answered entries
+            // If a local diary already exists for this date, merge: keep answered entries and journeys
             if var existing = storage.loadDiaryDay(date: date), existing.deviceId == deviceId {
+                // Merge visits
                 let existingById = Dictionary(uniqueKeysWithValues: existing.entries.map { ($0.id, $0) })
-                let merged = entries.map { entry -> DiaryEntry in
+                let mergedEntries = entries.map { entry -> DiaryEntry in
                     if let prev = existingById[entry.id] {
                         return prev  // keep previous answers
                     }
                     return entry
                 }
-                existing.entries = merged
+                existing.entries = mergedEntries
+
+                // Merge journeys
+                let existingJourneysById = Dictionary(uniqueKeysWithValues: existing.journeys.map { ($0.id, $0) })
+                let mergedJourneys = journeys.map { journey -> DiaryJourney in
+                    if let prev = existingJourneysById[journey.id] {
+                        return prev  // keep previous answers
+                    }
+                    return journey
+                }
+                existing.journeys = mergedJourneys
+
                 storage.saveDiaryDay(existing)
             } else {
-                let diaryDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: entries)
+                let diaryDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: entries, journeys: journeys)
                 storage.saveDiaryDay(diaryDay)
             }
 
@@ -223,10 +253,19 @@ class DiaryService: ObservableObject {
             )
         }
 
+        let submitJourneys = diaryDay.journeys.map { journey in
+            DiarySubmitJourney(
+                source_journey_id: journey.id,
+                confirmed_transport: journey.confirmedTransport ?? false,
+                travel_reason: journey.travelReason
+            )
+        }
+
         let payload = DiarySubmitPayload(
             deviceId: diaryDay.deviceId,
             date: diaryDay.date,
-            entries: submitEntries
+            entries: submitEntries,
+            journeys: submitJourneys
         )
 
         var req = URLRequest(url: url)

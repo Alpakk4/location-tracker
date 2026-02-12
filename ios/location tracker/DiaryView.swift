@@ -53,7 +53,7 @@ struct DiaryView: View {
     private func performFetch(for ds: String) {
         Task {
             await diaryService.loadOrFetchDiary(deviceId: deviceId, date: ds)
-            if let selected = diaryService.selectedDiaryDay, selected.entries.isEmpty {
+            if let selected = diaryService.selectedDiaryDay, selected.entries.isEmpty && selected.journeys.isEmpty {
                 diaryService.selectedDiaryDay = nil
                 withAnimation { showNoEntriesMessage = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -142,7 +142,7 @@ struct DiaryView: View {
                 // MARK: Selected Day
                 if let ds = selectedDateString {
                     let isSubmitted = diaryService.hasBeenSubmitted(date: ds) && diaryService.selectedDiaryDay == nil
-                    if let selected = diaryService.selectedDiaryDay, !selected.entries.isEmpty {
+                    if let selected = diaryService.selectedDiaryDay, !selected.entries.isEmpty || !selected.journeys.isEmpty {
                         NavigationLink(destination: DiaryDayDetailView(diaryDay: selected)) {
                             SelectedDayCard(day: selected, dateString: ds, isSubmitted: false)
                         }
@@ -229,7 +229,7 @@ struct DiaryDayRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(day.date)
                     .font(.headline)
-                if day.entries.isEmpty {
+                if day.entries.isEmpty && day.journeys.isEmpty {
                     Text("No diary entries on the selected day")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -238,13 +238,13 @@ struct DiaryDayRow: View {
                         .font(.caption)
                         .foregroundColor(.green)
                 } else {
-                    Text("\(day.completedCount)/\(day.entries.count) entries completed")
+                    Text("\(day.completedCount)/\(day.totalCount) items completed")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
             Spacer()
-            if day.entries.isEmpty {
+            if day.entries.isEmpty && day.journeys.isEmpty {
                 Image(systemName: "minus.circle")
                     .foregroundColor(.secondary)
                     .font(.title3)
@@ -272,10 +272,10 @@ struct SelectedDayCard: View {
     private var statusText: String {
         if isSubmitted { return "Submitted" }
         guard let day else { return "Loading..." }
-        if day.entries.isEmpty { return "No Entries" }
+        if day.entries.isEmpty && day.journeys.isEmpty { return "No Entries" }
         if day.isCompleted { return "Ready to Submit" }
         if day.completedCount == 0 { return "New" }
-        return "In Progress (\(day.completedCount)/\(day.entries.count))"
+        return "In Progress (\(day.completedCount)/\(day.totalCount))"
     }
 
     private var statusColor: Color {
@@ -295,8 +295,8 @@ struct SelectedDayCard: View {
     }
 
     private var progress: Double {
-        guard let day, !day.entries.isEmpty else { return isSubmitted ? 1.0 : 0.0 }
-        return Double(day.completedCount) / Double(day.entries.count)
+        guard let day, day.totalCount > 0 else { return isSubmitted ? 1.0 : 0.0 }
+        return Double(day.completedCount) / Double(day.totalCount)
     }
 
     var body: some View {
@@ -319,7 +319,7 @@ struct SelectedDayCard: View {
                 .tint(statusColor)
             Text(isSubmitted
                  ? "Diary already submitted successfully"
-                 : "\(day?.completedCount ?? 0)/\(day?.entries.count ?? 0) entries completed")
+                 : "\(day?.completedCount ?? 0)/\(day?.totalCount ?? 0) items completed")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

@@ -1,5 +1,2 @@
-CREATE TRIGGER protect_buckets_delete BEFORE DELETE ON storage.buckets FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
-
-CREATE TRIGGER protect_objects_delete BEFORE DELETE ON storage.objects FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();
-
-
+-- Intentionally empty: original content referenced internal Supabase
+-- storage functions that do not exist in the local/shadow database.

@@ -121,7 +121,7 @@ struct ContentView: View {
                                     .foregroundColor(.primary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             } else {
-                                TextField("User ID", text: $uid)
+                                TextField("Device ID", text: $uid)
                                     .onChange(of: uid) {
                                         NetworkingService.shared.uid = uid
                                         defaults.set(uid, forKey: ConfigurationKeys.uid)
@@ -241,7 +241,7 @@ struct ContentView: View {
         } message: {
             Text("Enter admin password to reset home coordinates.")
         }
-        .alert("Unlock User ID", isPresented: $showingUidPasswordAlert) {
+        .alert("Unlock Device ID", isPresented: $showingUidPasswordAlert) {
             SecureField("Enter Password", text: $uidEnteredPassword)
             Button("Cancel", role: .cancel) { uidEnteredPassword = "" }
             Button("Unlock") {
@@ -259,7 +259,7 @@ struct ContentView: View {
                 uidEnteredPassword = ""
             }
         } message: {
-            Text("Enter admin password to unlock User ID.")
+            Text("Enter admin password to unlock Device ID.")
         }
     }
 }

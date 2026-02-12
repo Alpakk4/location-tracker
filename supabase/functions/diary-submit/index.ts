@@ -26,7 +26,7 @@ serve(async (req) => {
       })
     }
 
-    const { deviceId, date, entries } = body
+    const { deviceId, date, entries, journeys } = body
     if (!deviceId || !date || !Array.isArray(entries) || entries.length === 0) {
       return new Response(
         JSON.stringify({ error: "Missing deviceId, date, or entries array" }),
@@ -54,8 +54,9 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    const journeyCount = Array.isArray(journeys) ? journeys.length : 0
     console.info(
-      `Submitting diary for device: ${deviceId}, date: ${date}, entries: ${entries.length}`
+      `Submitting diary for device: ${deviceId}, date: ${date}, entries: ${entries.length}, journeys: ${journeyCount}`
     )
 
     // 3. Look up the diary row for this device + date
@@ -117,7 +118,35 @@ serve(async (req) => {
       }
     }
 
-    // 5. Mark the diary as submitted
+    // 5. Update each journey row with user answers (if journeys provided)
+    let updatedJourneys = 0
+    if (Array.isArray(journeys) && journeys.length > 0) {
+      for (const journey of journeys as {
+        source_journey_id: string
+        confirmed_transport: boolean
+        travel_reason: string | null
+      }[]) {
+        const { error } = await supabase
+          .from("diary_journeys")
+          .update({
+            confirmed_transport: journey.confirmed_transport,
+            travel_reason: journey.travel_reason,
+          })
+          .eq("diary_id", diaryId)
+          .eq("journey_id", journey.source_journey_id)
+
+        if (error) {
+          console.error(`Update error for journey ${journey.source_journey_id}:`, error)
+          return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          })
+        }
+        updatedJourneys++
+      }
+    }
+
+    // 6. Mark the diary as submitted
     const { error: submitError } = await supabase
       .from("diaries")
       .update({ submitted_at: new Date().toISOString() })
@@ -125,12 +154,12 @@ serve(async (req) => {
 
     if (submitError) {
       console.error("Diary submit timestamp error:", submitError)
-      // Non-fatal: visits are already updated
+      // Non-fatal: visits and journeys are already updated
     }
 
-    // 6. Return 200 OK
+    // 7. Return 200 OK
     return new Response(
-      JSON.stringify({ success: true, updated: entries.length }),
+      JSON.stringify({ success: true, updated_visits: entries.length, updated_journeys: updatedJourneys }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

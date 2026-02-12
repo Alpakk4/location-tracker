@@ -39,6 +39,19 @@ interface ClusterResult {
   ping_count: number;
 }
 
+interface JourneyResult {
+  journey_id: string;       // first ping's entryid
+  entry_ids: string[];
+  from_visit_id: string | null;
+  to_visit_id: string | null;
+  primary_transport: string;
+  transport_proportions: Record<string, number>;
+  started_at: string;
+  ended_at: string;
+  journey_duration_s: number;
+  ping_count: number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -215,6 +228,134 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
 }
 
 // ---------------------------------------------------------------------------
+// Journey segmentation: split pings between high-confidence visits by transport
+// ---------------------------------------------------------------------------
+
+/** Active transport modes (exclude "still" and "unknown" which get absorbed). */
+const ACTIVE_MODES = new Set(["walking", "running", "cycling", "automotive"]);
+
+/** Normalise motion string to lowercase for consistent comparison. */
+function normaliseMotion(m: string): string {
+  return m.toLowerCase();
+}
+
+/**
+ * Segment pings between consecutive high-confidence visits into journeys.
+ * Each journey is a contiguous run of pings sharing the same active transport mode.
+ * "still"/"unknown" pings are absorbed into the preceding active segment.
+ */
+function segmentJourneys(
+  allPings: RawPing[],
+  selectedVisits: ClusterResult[],
+): JourneyResult[] {
+  // 1. Identify high-confidence visits in chronological order
+  const highVisits = selectedVisits
+    .filter(v => v.visit_confidence === "high")
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  if (highVisits.length < 2) return []; // need at least two anchors
+
+  const journeys: JourneyResult[] = [];
+
+  // 2. For each consecutive pair of high-confidence visits, extract gap pings
+  for (let vi = 0; vi < highVisits.length - 1; vi++) {
+    const vA = highVisits[vi];
+    const vB = highVisits[vi + 1];
+
+    const gapStart = new Date(vA.ended_at).getTime();
+    const gapEnd   = new Date(vB.created_at).getTime();
+
+    if (gapEnd <= gapStart) continue; // overlapping or zero-width gap
+
+    // Collect pings strictly between the two visits
+    const gapPings = allPings.filter(p => {
+      const t = new Date(p.created_at).getTime();
+      return t >= gapStart && t <= gapEnd;
+    });
+
+    if (gapPings.length === 0) continue;
+
+    // 3. Segment by active transport mode changes
+    const segments: RawPing[][] = [];
+    let currentSegment: RawPing[] = [];
+    let currentMode: string | null = null;
+
+    for (const ping of gapPings) {
+      const motion = normaliseMotion(ping.motion_type.motion);
+
+      if (ACTIVE_MODES.has(motion)) {
+        if (motion === currentMode) {
+          // Same active mode — extend segment
+          currentSegment.push(ping);
+        } else {
+          // Different active mode — start new segment
+          if (currentSegment.length > 0) {
+            segments.push(currentSegment);
+          }
+          currentSegment = [ping];
+          currentMode = motion;
+        }
+      } else {
+        // "still" or "unknown" — absorb into current segment if one exists
+        if (currentSegment.length > 0) {
+          currentSegment.push(ping);
+        }
+        // If no active segment started yet, skip this ping
+      }
+    }
+    // Flush last segment
+    if (currentSegment.length > 0) {
+      segments.push(currentSegment);
+    }
+
+    // 4. Build JourneyResult for each segment
+    for (const seg of segments) {
+      // Count motion types for proportions
+      const motionCounts: Record<string, number> = {};
+      for (const p of seg) {
+        const m = normaliseMotion(p.motion_type.motion);
+        motionCounts[m] = (motionCounts[m] ?? 0) + 1;
+      }
+
+      // Compute proportions (rounded to 2 decimals)
+      const total = seg.length;
+      const proportions: Record<string, number> = {};
+      for (const [m, count] of Object.entries(motionCounts)) {
+        proportions[m] = Math.round((count / total) * 100) / 100;
+      }
+
+      // Primary transport = active mode with highest count
+      let primaryTransport = "unknown";
+      let bestCount = 0;
+      for (const [m, count] of Object.entries(motionCounts)) {
+        if (ACTIVE_MODES.has(m) && count > bestCount) {
+          bestCount = count;
+          primaryTransport = m;
+        }
+      }
+
+      const first = seg[0];
+      const last  = seg[seg.length - 1];
+
+      journeys.push({
+        journey_id: first.entryid,
+        entry_ids: seg.map(p => p.entryid),
+        from_visit_id: vA.entryid,
+        to_visit_id: vB.entryid,
+        primary_transport: primaryTransport,
+        transport_proportions: proportions,
+        started_at: first.created_at,
+        ended_at: last.created_at,
+        journey_duration_s: durationSeconds(first.created_at, last.created_at),
+        ping_count: seg.length,
+      });
+    }
+  }
+
+  return journeys;
+}
+
+// ---------------------------------------------------------------------------
 // Edge Function
 // ---------------------------------------------------------------------------
 
@@ -258,19 +399,26 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingDiary?.submitted_at) {
-      // Diary already submitted – return existing visits
+      // Diary already submitted – return existing visits and journeys
       const { data: existingVisits } = await supabase
         .from('diary_visits')
         .select('*')
         .eq('diary_id', existingDiary.id)
         .order('started_at', { ascending: true });
 
-      console.info(`Diary already submitted at ${existingDiary.submitted_at}, returning ${(existingVisits ?? []).length} existing visits`);
+      const { data: existingJourneys } = await supabase
+        .from('diary_journeys')
+        .select('*')
+        .eq('diary_id', existingDiary.id)
+        .order('started_at', { ascending: true });
+
+      console.info(`Diary already submitted at ${existingDiary.submitted_at}, returning ${(existingVisits ?? []).length} existing visits and ${(existingJourneys ?? []).length} existing journeys`);
 
       return new Response(JSON.stringify({
         already_submitted: true,
         submitted_at: existingDiary.submitted_at,
         visits: existingVisits ?? [],
+        journeys: existingJourneys ?? [],
       }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
@@ -299,10 +447,14 @@ serve(async (req) => {
     }
 
     // 5. Cluster, classify, and select
-    const allClusters = clusterPings(data as RawPing[]);
+    const allPings = data as RawPing[];
+    const allClusters = clusterPings(allPings);
     const selected = selectClusters(allClusters);
 
-    console.info(`Clustered ${(data as RawPing[]).length} pings into ${allClusters.length} visits, returning ${selected.length}`);
+    // 5b. Segment journeys between high-confidence visits
+    const journeys = segmentJourneys(allPings, selected);
+
+    console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length}) and ${journeys.length} journeys`);
 
     // 6. Pre-populate normalized diary tables (diaries -> diary_visits -> diary_visit_entries)
 
@@ -393,10 +545,79 @@ serve(async (req) => {
           }
         }
       }
+
+      // 6e. Insert journey rows
+      if (journeys.length > 0) {
+        const { data: existingJourneys } = await supabase
+          .from('diary_journeys')
+          .select('journey_id')
+          .eq('diary_id', diaryId);
+
+        const existingJourneyIds = new Set(
+          (existingJourneys ?? []).map((r: { journey_id: string }) => r.journey_id)
+        );
+
+        const newJourneys = journeys.filter(j => !existingJourneyIds.has(j.journey_id));
+
+        if (newJourneys.length > 0) {
+          const journeyRows = newJourneys.map(j => ({
+            diary_id: diaryId,
+            journey_id: j.journey_id,
+            from_visit_id: j.from_visit_id,
+            to_visit_id: j.to_visit_id,
+            primary_transport: j.primary_transport,
+            transport_proportions: j.transport_proportions,
+            ping_count: j.ping_count,
+            journey_duration_s: j.journey_duration_s,
+            started_at: j.started_at,
+            ended_at: j.ended_at,
+            confirmed_transport: null,
+            travel_reason: null,
+          }));
+
+          const { data: insertedJourneys, error: journeyInsertError } = await supabase
+            .from('diary_journeys')
+            .insert(journeyRows)
+            .select('id, journey_id');
+
+          if (journeyInsertError) {
+            console.error("Journey insert error:", journeyInsertError);
+          } else {
+            console.info(`Pre-populated ${insertedJourneys.length} new journey rows`);
+
+            // 6f. Insert diary_journey_entries linking journeys to their pings
+            const journeyEntryRows: { diary_journey_id: string; entry_id: string; position_in_journey: number }[] = [];
+
+            for (const ij of insertedJourneys) {
+              const journey = newJourneys.find(j => j.journey_id === ij.journey_id);
+              if (journey) {
+                journey.entry_ids.forEach((eid, idx) => {
+                  journeyEntryRows.push({
+                    diary_journey_id: ij.id,
+                    entry_id: eid,
+                    position_in_journey: idx,
+                  });
+                });
+              }
+            }
+
+            if (journeyEntryRows.length > 0) {
+              const { error: journeyEntryInsertError } = await supabase
+                .from('diary_journey_entries')
+                .insert(journeyEntryRows);
+              if (journeyEntryInsertError) {
+                console.error("Journey-entries insert error:", journeyEntryInsertError);
+              } else {
+                console.info(`Linked ${journeyEntryRows.length} pings to journeys`);
+              }
+            }
+          }
+        }
+      }
     }
 
-    // 7. Return selected clusters to iOS
-    return new Response(JSON.stringify(selected), {
+    // 7. Return selected visits and journeys to iOS
+    return new Response(JSON.stringify({ visits: selected, journeys }), {
       status: 200,
       headers: { 
         "Content-Type": "application/json",
