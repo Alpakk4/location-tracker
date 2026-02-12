@@ -249,6 +249,34 @@ serve(async (req) => {
 
     console.info(`Fetching diary for: ${deviceId} on ${date}`);
 
+    // 3b. Check if diary already exists and has been submitted
+    const { data: existingDiary } = await supabase
+      .from('diaries')
+      .select('id, submitted_at')
+      .eq('deviceid', deviceId)
+      .eq('diary_date', date)
+      .maybeSingle();
+
+    if (existingDiary?.submitted_at) {
+      // Diary already submitted – return existing visits
+      const { data: existingVisits } = await supabase
+        .from('diary_visits')
+        .select('*')
+        .eq('diary_id', existingDiary.id)
+        .order('started_at', { ascending: true });
+
+      console.info(`Diary already submitted at ${existingDiary.submitted_at}, returning ${(existingVisits ?? []).length} existing visits`);
+
+      return new Response(JSON.stringify({
+        already_submitted: true,
+        submitted_at: existingDiary.submitted_at,
+        visits: existingVisits ?? [],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
     // 4. Query all pings for the day (need position_from_home for clustering)
     const { data, error } = await supabase
       .from('locationsvisitednew')

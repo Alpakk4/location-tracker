@@ -125,6 +125,17 @@ class DiaryService: ObservableObject {
                 return
             }
 
+            // Check if the server says this diary was already submitted
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let alreadySubmitted = json["already_submitted"] as? Bool,
+               alreadySubmitted {
+                // Record locally so we don't ask again
+                recordSubmission(date: date)
+                isLoading = false
+                selectedDiaryDay = nil
+                return
+            }
+
             let rawEntries = try JSONDecoder().decode([DiaryMakerEntry].self, from: data)
 
             // Transform raw entries (visit clusters) into DiaryEntry with activity labels

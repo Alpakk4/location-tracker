@@ -61,7 +61,7 @@ serve(async (req) => {
     // 3. Look up the diary row for this device + date
     const { data: diary, error: diaryError } = await supabase
       .from("diaries")
-      .select("id")
+      .select("id, submitted_at")
       .eq("deviceid", deviceId)
       .eq("diary_date", date)
       .single()
@@ -72,6 +72,16 @@ serve(async (req) => {
         JSON.stringify({ error: "Diary not found for this device and date" }),
         {
           status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
+    }
+
+    if (diary.submitted_at) {
+      return new Response(
+        JSON.stringify({ error: "Diary already submitted", submitted_at: diary.submitted_at }),
+        {
+          status: 409,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       )

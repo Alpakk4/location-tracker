@@ -14,7 +14,6 @@ struct DiaryView: View {
     @State private var isSelectingAnotherDate = false
     @State private var selectedDateString: String?
     @State private var showNoEntriesMessage = false
-    @State private var alreadySubmittedDate: String? = nil
 
     private let defaults = UserDefaults.standard
 
@@ -44,7 +43,7 @@ struct DiaryView: View {
 
         // Check if this date was already submitted
         if diaryService.hasBeenSubmitted(date: ds) {
-            alreadySubmittedDate = ds  // triggers alert; actual fetch deferred to alert's Continue button
+            diaryService.selectedDiaryDay = nil
             return
         }
 
@@ -215,20 +214,6 @@ struct DiaryView: View {
                         selectedDateString = nil
                     }
                 }
-            }
-            .alert("Already Submitted", isPresented: .init(
-                get: { alreadySubmittedDate != nil },
-                set: { if !$0 { alreadySubmittedDate = nil } }
-            )) {
-                Button("Cancel", role: .cancel) { alreadySubmittedDate = nil }
-                Button("Continue") {
-                    if let ds = alreadySubmittedDate {
-                        alreadySubmittedDate = nil
-                        performFetch(for: ds)
-                    }
-                }
-            } message: {
-                Text("Completing diary for a day you have already submitted — you're now adding another entry for day \(alreadySubmittedDate ?? "")")
             }
         }
     }
