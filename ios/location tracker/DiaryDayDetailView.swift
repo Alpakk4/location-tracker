@@ -153,7 +153,7 @@ struct DiaryDayDetailView: View {
                             .background(diaryDay.isCompleted ? Color.green : Color.gray)
                             .cornerRadius(12)
                         }
-                        .disabled(!diaryDay.isCompleted || diaryService.isLoading)
+                        .disabled(!diaryDay.isCompleted || diaryService.isLoading || diaryService.hasBeenSubmitted(date: diaryDay.date))
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 8)

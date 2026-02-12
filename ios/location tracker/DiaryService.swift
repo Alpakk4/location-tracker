@@ -55,6 +55,12 @@ class DiaryService: ObservableObject {
 
     /// Loads diary from local storage if available; fetches from Supabase only if no local copy exists.
     func loadOrFetchDiary(deviceId: String, date: String) async {
+        // Guard: don't load or fetch a diary that was already submitted
+        if hasBeenSubmitted(date: date) {
+            selectedDiaryDay = nil
+            return
+        }
+
         // Check local storage first
         if let local = storage.loadDiaryDay(date: date), local.deviceId == deviceId {
             selectedDiaryDay = local
@@ -228,6 +234,10 @@ class DiaryService: ObservableObject {
     // MARK: - Submit Completed Diary (calls diary-submit)
 
     func submitCompletedDiary(_ diaryDay: DiaryDay) async -> Bool {
+        guard !hasBeenSubmitted(date: diaryDay.date) else {
+            errorMessage = "Diary already submitted"
+            return false
+        }
         guard diaryDay.isCompleted else {
             errorMessage = "Diary is not fully completed"
             return false

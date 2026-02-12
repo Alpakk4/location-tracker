@@ -10,10 +10,11 @@ import SwiftUI
 struct DiaryView: View {
     @EnvironmentObject var diaryService: DiaryService
 
+    @State private var path: [DiaryDay] = []
     @State private var selectedDate = Date()
     @State private var isSelectingAnotherDate = false
-    @State private var selectedDateString: String?
     @State private var showNoEntriesMessage = false
+    @State private var showAlreadySubmittedMessage = false
 
     private let defaults = UserDefaults.standard
 
@@ -21,9 +22,9 @@ struct DiaryView: View {
         defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
     }
 
-    /// In Progress list excludes the currently selected day to avoid duplication
+    /// In-progress diaries, excluding any that have already been submitted.
     private var inProgressDays: [DiaryDay] {
-        diaryService.diaryDays.filter { $0.date != selectedDateString }
+        diaryService.diaryDays.filter { !diaryService.hasBeenSubmitted(date: $0.date) }
     }
 
     private func dateString(from date: Date) -> String {
@@ -35,15 +36,14 @@ struct DiaryView: View {
     private func buildDiary(for date: Date) {
         selectedDate = date
         let ds = dateString(from: date)
-
-        // Dedup guard
-        guard selectedDateString != ds else { return }
-        selectedDateString = ds
         isSelectingAnotherDate = false  // collapse calendar
 
         // Check if this date was already submitted
         if diaryService.hasBeenSubmitted(date: ds) {
-            diaryService.selectedDiaryDay = nil
+            withAnimation { showAlreadySubmittedMessage = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                withAnimation { showAlreadySubmittedMessage = false }
+            }
             return
         }
 
@@ -53,7 +53,12 @@ struct DiaryView: View {
     private func performFetch(for ds: String) {
         Task {
             await diaryService.loadOrFetchDiary(deviceId: deviceId, date: ds)
-            if let selected = diaryService.selectedDiaryDay, selected.entries.isEmpty && selected.journeys.isEmpty {
+            if let selected = diaryService.selectedDiaryDay,
+               !selected.entries.isEmpty || !selected.journeys.isEmpty {
+                // Navigate immediately to the detail view
+                path = [selected]
+            } else {
+                // Empty diary or no data
                 diaryService.selectedDiaryDay = nil
                 withAnimation { showNoEntriesMessage = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -64,7 +69,7 @@ struct DiaryView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 16) {
 
                 // MARK: Day Selection (Auto-build)
@@ -137,39 +142,27 @@ struct DiaryView: View {
                         .padding(.horizontal)
                 }
 
-                Divider()
-
-                // MARK: Selected Day
-                if let ds = selectedDateString {
-                    let isSubmitted = diaryService.hasBeenSubmitted(date: ds) && diaryService.selectedDiaryDay == nil
-                    if let selected = diaryService.selectedDiaryDay, !selected.entries.isEmpty || !selected.journeys.isEmpty {
-                        NavigationLink(destination: DiaryDayDetailView(diaryDay: selected)) {
-                            SelectedDayCard(day: selected, dateString: ds, isSubmitted: false)
-                        }
-                        .buttonStyle(.plain)
-                    } else if isSubmitted {
-                        SelectedDayCard(day: nil, dateString: ds, isSubmitted: true)
-                    } else if diaryService.isLoading {
-                        ProgressView("Loading diary...")
-                            .padding()
-                    } else if diaryService.selectedDiaryDay != nil {
-                        // Empty diary (e.g. today waiting for entries)
-                        VStack(spacing: 8) {
-                            Image(systemName: "book.closed")
-                                .font(.system(size: 40))
-                                .foregroundColor(.secondary)
-                            Text("No diary entries on the selected day")
-                                .foregroundColor(.secondary)
-                        }
+                // MARK: Already Submitted Toast
+                if showAlreadySubmittedMessage {
+                    Text("Diary for this date has already been submitted")
+                        .font(.subheadline)
                         .padding()
-                    }
-                } else if diaryService.isLoading {
+                        .background(Color.indigo.opacity(0.15))
+                        .cornerRadius(10)
+                        .transition(.opacity)
+                        .padding(.horizontal)
+                }
+
+                // MARK: Loading Indicator
+                if diaryService.isLoading {
                     ProgressView("Loading diary...")
                         .padding()
                 }
 
+                Divider()
+
                 // MARK: In Progress Diaries
-                if inProgressDays.isEmpty && selectedDateString == nil {
+                if inProgressDays.isEmpty {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "book.closed")
@@ -183,13 +176,12 @@ struct DiaryView: View {
                             .multilineTextAlignment(.center)
                     }
                     Spacer()
-                } else if !inProgressDays.isEmpty {
+                } else {
                     List {
                         Section(header: Text("In Progress")) {
                             ForEach(inProgressDays) { day in
                                 Button {
-                                    diaryService.selectedDiaryDay = day
-                                    selectedDateString = day.date
+                                    path = [day]
                                 } label: {
                                     DiaryDayRow(day: day)
                                 }
@@ -200,19 +192,15 @@ struct DiaryView: View {
                 }
             }
             .navigationTitle("Diary")
+            .navigationDestination(for: DiaryDay.self) { day in
+                DiaryDayDetailView(diaryDay: day)
+            }
             .onAppear {
                 diaryService.loadLocalDiaries()
-                if let ds = selectedDateString {
-                    if let fresh = DiaryStorage.shared.loadDiaryDay(date: ds) {
-                        diaryService.selectedDiaryDay = fresh
-                    } else if diaryService.hasBeenSubmitted(date: ds) {
-                        // Diary was submitted -- keep selectedDateString so card shows "Submitted" badge
-                        diaryService.selectedDiaryDay = nil
-                    } else {
-                        // Diary doesn't exist and wasn't submitted -- clear
-                        diaryService.selectedDiaryDay = nil
-                        selectedDateString = nil
-                    }
+            }
+            .onChange(of: path) {
+                if path.isEmpty {
+                    diaryService.loadLocalDiaries()
                 }
             }
         }
@@ -262,70 +250,3 @@ struct DiaryDayRow: View {
     }
 }
 
-// MARK: - Selected Day Card
-
-struct SelectedDayCard: View {
-    let day: DiaryDay?
-    let dateString: String
-    let isSubmitted: Bool
-
-    private var statusText: String {
-        if isSubmitted { return "Submitted" }
-        guard let day else { return "Loading..." }
-        if day.entries.isEmpty && day.journeys.isEmpty { return "No Entries" }
-        if day.isCompleted { return "Ready to Submit" }
-        if day.completedCount == 0 { return "New" }
-        return "In Progress (\(day.completedCount)/\(day.totalCount))"
-    }
-
-    private var statusColor: Color {
-        if isSubmitted { return .indigo }
-        guard let day else { return .secondary }
-        if day.isCompleted { return .green }
-        if day.completedCount > 0 { return .orange }
-        return .secondary
-    }
-
-    private var statusIcon: String {
-        if isSubmitted { return "checkmark.seal.fill" }
-        guard let day else { return "circle" }
-        if day.isCompleted { return "checkmark.seal.fill" }
-        if day.completedCount > 0 { return "circle.dotted" }
-        return "circle"
-    }
-
-    private var progress: Double {
-        guard let day, day.totalCount > 0 else { return isSubmitted ? 1.0 : 0.0 }
-        return Double(day.completedCount) / Double(day.totalCount)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(dateString)
-                    .font(.title3)
-                    .bold()
-                Spacer()
-                Label(statusText, systemImage: statusIcon)
-                    .font(.caption)
-                    .bold()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .foregroundColor(.white)
-                    .background(statusColor)
-                    .cornerRadius(8)
-            }
-            ProgressView(value: progress)
-                .tint(statusColor)
-            Text(isSubmitted
-                 ? "Diary already submitted successfully"
-                 : "\(day?.completedCount ?? 0)/\(day?.totalCount ?? 0) items completed")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(14)
-        .padding(.horizontal)
-    }
-}

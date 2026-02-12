@@ -174,6 +174,13 @@ struct DiaryDay: Codable, Identifiable {
     }
 }
 
+// MARK: - DiaryDay Hashable (needed for NavigationStack path)
+
+extension DiaryDay: Hashable {
+    static func == (lhs: DiaryDay, rhs: DiaryDay) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 // MARK: - Submission Payload
 
 /// Payload sent to the diary-submit Supabase function.
