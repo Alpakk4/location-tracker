@@ -57,8 +57,7 @@ console.info('server started');
 Deno.serve(async (req) => {
   const { uid, lat, long, home_lat, home_long,motion} = await req.json();
   const MAPS_API = Deno.env.get("MAPS_API")!;
-  console.info("maps api: " + MAPS_API);
-  console.info("info from request", uid, lat, long, home_lat, home_long);
+  console.info("ping request received", { uidPresent: Boolean(uid), hasHome: home_lat != null && home_long != null });
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
   const maps_body = {
     maxResultCount: 1,
@@ -74,9 +73,11 @@ Deno.serve(async (req) => {
     }
   };
   // Calculate the displacement and bearing
-  const displacement = calculateDisplacement(home_lat, home_long, lat, long);
+  const displacement = (home_lat != null && home_long != null)
+    ? calculateDisplacement(home_lat, home_long, lat, long)
+    : null;
 
-  console.info("DEBUG 1: Fetching maps");
+  console.info("Fetching nearby places");
   const maps_res = await fetch(maps_base, {
     body: JSON.stringify(maps_body),
     headers: {
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
     method: "POST"
   });
 
-  console.info("DEBUG 2: Fetched maps OK", maps_res.status);
+  console.info("Places API response", maps_res.status);
   if (maps_res.status != 200) {
     console.warn(maps_res);
     return new Response(null, {
@@ -96,7 +97,6 @@ Deno.serve(async (req) => {
     });
   };
   const maps_data = await maps_res.json();
-  console.info("DEBUG 3: Got maps data:", maps_data);
   // Write location to database
   // 1. Grab the first place object safely
   const firstPlace = maps_data.places?.[0];
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     placeid: firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown",
     position_from_home: displacement
   };
-  console.info("DEBUG 4: SAVING to DB", db_body);
+  console.info("Saving resolved ping record");
   const db_res = await fetch(Deno.env.get("SUPABASE_URL") + "/rest/v1/locationsvisitednew", {
     method: "POST",
     headers: {
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
     body: JSON.stringify(db_body)
   });
   if (db_res.status != 201) {
-    console.info("DEBUG 5: ALERT Sending 502 because previous result not 201", db_res);
+    console.info("upstream insert failed", db_res.status);
     return new Response(JSON.stringify({
       "upstream_status": db_res.status,
       "upstream_response": await db_res.json()
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       status: 502
     });
   }
-  console.info("DEBUG 6: everything is dandy");
+  console.info("ping stored");
   return db_res;
 });
 

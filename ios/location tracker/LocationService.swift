@@ -17,6 +17,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var currentMotion: String = "STILL"
     @Published var currentConfidence: String = "unknown"
     @Published var lastLocation: CLLocation?
+    @Published var authorizationStatus: CLAuthorizationStatus = CLLocationManager.authorizationStatus()
 
     override init() {
         super.init()
@@ -31,31 +32,41 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     /// Requests always-on permission because tracking can continue in background.
     func requestAuth() {
+        #if DEBUG
         print("requesting location service auth")
+        #endif
         manager.requestAlwaysAuthorization()
     }
 
     /// Starts both location callbacks and motion activity updates.
     /// If motion is unavailable, location still continues.
     func start() {
+        #if DEBUG
         print("Starting location service")
+        #endif
         manager.startUpdatingLocation()
 
         guard CMMotionActivityManager.isActivityAvailable() else {
+            #if DEBUG
             print("Motion activity not available on this device")
+            #endif
             return
         }
         activityManager.startActivityUpdates(to: .main) { [weak self] activity in
             guard let self = self, let activity = activity else { return }
             self.currentMotion = self.mapActivity(activity)
             self.currentConfidence = self.mapConfidence(activity.confidence)
+            #if DEBUG
             print("Activity updated: \(self.currentMotion) (\(self.currentConfidence))")
+            #endif
         }
     }
 
     /// Stops all active sensors owned by this service.
     func stop() {
+        #if DEBUG
         print("Stopping location service")
+        #endif
         manager.stopUpdatingLocation()
         activityManager.stopActivityUpdates()
     }
@@ -93,5 +104,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.lastLocation = loc
         }
         NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence)
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        DispatchQueue.main.async {
+            self.authorizationStatus = manager.authorizationStatus
+        }
     }
 }

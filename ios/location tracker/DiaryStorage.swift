@@ -14,6 +14,7 @@ class DiaryStorage {
     private let fileManager = FileManager.default
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private(set) var lastError: Error?
 
     private var documentsDirectory: URL {
         fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -31,15 +32,24 @@ class DiaryStorage {
 
     // MARK: - Save
 
-    func saveDiaryDay(_ diaryDay: DiaryDay) {
-        let url = fileURL(for: diaryDay.date)
+    @discardableResult
+    func saveDiaryDay(_ diaryDay: DiaryDay) -> Bool {
         do {
-            let data = try encoder.encode(diaryDay)
-            try data.write(to: url, options: .atomic)
-            print("[DiaryStorage] Saved diary for \(diaryDay.date)")
+            try saveDiaryDayOrThrow(diaryDay)
+            return true
         } catch {
+            lastError = error
+            #if DEBUG
             print("[DiaryStorage] Failed to save diary for \(diaryDay.date): \(error)")
+            #endif
+            return false
         }
+    }
+
+    func saveDiaryDayOrThrow(_ diaryDay: DiaryDay) throws {
+        let url = fileURL(for: diaryDay.date)
+        let data = try encoder.encode(diaryDay)
+        try data.write(to: url, options: .atomic)
     }
 
     // MARK: - Load Single
@@ -52,7 +62,10 @@ class DiaryStorage {
             let diaryDay = try decoder.decode(DiaryDay.self, from: data)
             return diaryDay
         } catch {
+            lastError = error
+            #if DEBUG
             print("[DiaryStorage] Failed to load diary for \(date): \(error)")
+            #endif
             return nil
         }
     }
@@ -66,28 +79,47 @@ class DiaryStorage {
             let diaryFiles = files.filter { $0.lastPathComponent.hasPrefix("diary_") && $0.pathExtension == "json" }
             var days: [DiaryDay] = []
             for file in diaryFiles {
-                let data = try Data(contentsOf: file)
-                let day = try decoder.decode(DiaryDay.self, from: data)
-                days.append(day)
+                do {
+                    let data = try Data(contentsOf: file)
+                    let day = try decoder.decode(DiaryDay.self, from: data)
+                    days.append(day)
+                } catch {
+                    lastError = error
+                    #if DEBUG
+                    print("[DiaryStorage] Skipping unreadable diary file \(file.lastPathComponent): \(error)")
+                    #endif
+                }
             }
             return days.sorted { $0.date > $1.date }  // newest first
         } catch {
+            lastError = error
+            #if DEBUG
             print("[DiaryStorage] Failed to load all diaries: \(error)")
+            #endif
             return []
         }
     }
 
     // MARK: - Delete
 
-    func deleteDiaryDay(date: String) {
-        let url = fileURL(for: date)
+    @discardableResult
+    func deleteDiaryDay(date: String) -> Bool {
         do {
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
-                print("[DiaryStorage] Deleted diary for \(date)")
-            }
+            try deleteDiaryDayOrThrow(date: date)
+            return true
         } catch {
+            lastError = error
+            #if DEBUG
             print("[DiaryStorage] Failed to delete diary for \(date): \(error)")
+            #endif
+            return false
+        }
+    }
+
+    func deleteDiaryDayOrThrow(date: String) throws {
+        let url = fileURL(for: date)
+        if fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
         }
     }
 }

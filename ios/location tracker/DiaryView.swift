@@ -19,7 +19,10 @@ struct DiaryView: View {
     private let defaults = UserDefaults.standard
 
     private var deviceId: String {
-        defaults.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
+        SecureStore.getString(for: .uid)
+            ?? defaults.string(forKey: ConfigurationKeys.uid)
+            ?? defaults.string(forKey: ConfigurationKeys.legacyUid)
+            ?? ConfigurationDefaults.anonymousUid
     }
 
     /// In-progress diaries, excluding any that have already been submitted.
@@ -99,10 +102,11 @@ struct DiaryView: View {
                     .padding(.horizontal)
 
                     if isSelectingAnotherDate {
+                        let maxSelectableDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
                         DatePicker(
                             "Select a date",
                             selection: $selectedDate,
-                            in: ...Calendar.current.date(byAdding: .day, value: -1, to: Date())!,
+                            in: ...maxSelectableDate,
                             displayedComponents: .date
                         )
                         .datePickerStyle(.graphical)

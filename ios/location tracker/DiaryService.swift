@@ -22,6 +22,7 @@ class DiaryService: ObservableObject {
 
     private let storage = DiaryStorage.shared
     private let submittedDatesKey = "diary_submitted_dates"
+    private var latestLoadRequestId = UUID()
 
     init() {
         loadLocalDiaries()
@@ -36,7 +37,10 @@ class DiaryService: ObservableObject {
 
     /// Persists a day and refreshes in-memory collections used by the UI.
     func saveDiaryDay(_ day: DiaryDay) {
-        storage.saveDiaryDay(day)
+        guard storage.saveDiaryDay(day) else {
+            errorMessage = "Could not save diary progress. Please try again."
+            return
+        }
         loadLocalDiaries()
     }
 
@@ -67,6 +71,14 @@ class DiaryService: ObservableObject {
     /// - reuse local progress when available
     /// - otherwise fetch fresh generated data from `diary-maker`
     func loadOrFetchDiary(deviceId: String, date: String) async {
+        let requestId = UUID()
+        latestLoadRequestId = requestId
+        guard isValidDiaryDate(date) else {
+            selectedDiaryDay = nil
+            errorMessage = "Invalid date format."
+            return
+        }
+
         // Guard: do not surface or refetch a day already confirmed as submitted.
         if hasBeenSubmitted(date: date) {
             selectedDiaryDay = nil
@@ -79,7 +91,8 @@ class DiaryService: ObservableObject {
             return
         }
         // No local diary exists; bootstrap from server-generated visits and journeys.
-        await fetchDiary(deviceId: deviceId, date: date)
+        await fetchDiary(deviceId: deviceId, date: date, requestId: requestId)
+        guard !isStale(requestId) else { return }
         // If a non-empty result was persisted, select it.
         // Keep transient empty-day selection unchanged.
         if let saved = storage.loadDiaryDay(date: date) {
@@ -91,21 +104,69 @@ class DiaryService: ObservableObject {
 
     /// Base URL for Supabase edge functions, e.g. "https://xxx.supabase.co/functions/v1/"
     private func functionsBaseURL() -> String {
-        return Environment.endpoint
+        Environment.endpoint
     }
 
     private func apiKey() -> String {
-        return Environment.apikey
+        Environment.apikey
+    }
+
+    private func endpointURL(path: String) -> URL? {
+        let endpoint = functionsBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return nil }
+        let base = endpoint.hasSuffix("/") ? endpoint : "\(endpoint)/"
+        return URL(string: "\(base)\(path)")
+    }
+
+    private func isStale(_ requestId: UUID?) -> Bool {
+        guard let requestId else { return false }
+        return requestId != latestLoadRequestId
+    }
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        print("[DiaryService] \(message)")
+        #endif
+    }
+
+    private func isValidDiaryDate(_ raw: String) -> Bool {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let parsed = formatter.date(from: raw) else { return false }
+        return formatter.string(from: parsed) == raw
+    }
+
+    private func executeWithRetry<T>(
+        maxAttempts: Int = 3,
+        baseDelayNanoseconds: UInt64 = 400_000_000,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var currentDelay = baseDelayNanoseconds
+        var attempt = 1
+
+        while true {
+            do {
+                return try await operation()
+            } catch {
+                guard attempt < maxAttempts else { throw error }
+                try await Task.sleep(nanoseconds: currentDelay)
+                currentDelay *= 2
+                attempt += 1
+            }
+        }
     }
 
     // MARK: - Fetch Diary (calls diary-maker)
 
     /// Fetches generated diary data and reconciles it with any saved local answers.
     /// Merge contract: preserve prior user answers when item ids are stable across fetches.
-    func fetchDiary(deviceId: String, date: String) async {
-        let base = functionsBaseURL()
-        let urlString = "\(base)diary-maker"
-        guard let url = URL(string: urlString) else {
+    func fetchDiary(deviceId: String, date: String, requestId: UUID? = nil) async {
+        guard isValidDiaryDate(date) else {
+            errorMessage = "Invalid date format."
+            return
+        }
+        guard let url = endpointURL(path: "diary-maker") else {
             errorMessage = "Invalid diary-maker URL"
             return
         }
@@ -130,7 +191,13 @@ class DiaryService: ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await executeWithRetry {
+                try await URLSession.shared.data(for: req)
+            }
+            guard !isStale(requestId) else {
+                isLoading = false
+                return
+            }
 
             guard let http = response as? HTTPURLResponse else {
                 isLoading = false
@@ -141,7 +208,8 @@ class DiaryService: ObservableObject {
             guard http.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? "unknown"
                 isLoading = false
-                errorMessage = "Server error \(http.statusCode): \(body)"
+                debugLog("Fetch failed: \(http.statusCode), body=\(body)")
+                errorMessage = "Unable to fetch diary right now. Please try again."
                 return
             }
 
@@ -210,7 +278,9 @@ class DiaryService: ObservableObject {
             // Merge strategy: server may regenerate clusters, but stable ids keep prior answers.
             if var existing = storage.loadDiaryDay(date: date), existing.deviceId == deviceId {
                 // Merge visits by id and keep answered values when present.
-                let existingById = Dictionary(uniqueKeysWithValues: existing.entries.map { ($0.id, $0) })
+                let existingById = existing.entries.reduce(into: [String: DiaryEntry]()) { partial, item in
+                    partial[item.id] = item
+                }
                 let mergedEntries = entries.map { entry -> DiaryEntry in
                     if let prev = existingById[entry.id] {
                         return prev  // keep previous answers
@@ -220,7 +290,9 @@ class DiaryService: ObservableObject {
                 existing.entries = mergedEntries
 
                 // Merge journeys by id and keep answered values when present.
-                let existingJourneysById = Dictionary(uniqueKeysWithValues: existing.journeys.map { ($0.id, $0) })
+                let existingJourneysById = existing.journeys.reduce(into: [String: DiaryJourney]()) { partial, item in
+                    partial[item.id] = item
+                }
                 let mergedJourneys = journeys.map { journey -> DiaryJourney in
                     if let prev = existingJourneysById[journey.id] {
                         return prev  // keep previous answers
@@ -229,10 +301,18 @@ class DiaryService: ObservableObject {
                 }
                 existing.journeys = mergedJourneys
 
-                storage.saveDiaryDay(existing)
+                guard storage.saveDiaryDay(existing) else {
+                    isLoading = false
+                    errorMessage = "Could not save refreshed diary. Please try again."
+                    return
+                }
             } else {
                 let diaryDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: entries, journeys: journeys)
-                storage.saveDiaryDay(diaryDay)
+                guard storage.saveDiaryDay(diaryDay) else {
+                    isLoading = false
+                    errorMessage = "Could not save fetched diary. Please try again."
+                    return
+                }
             }
 
             loadLocalDiaries()
@@ -241,7 +321,8 @@ class DiaryService: ObservableObject {
 
         } catch {
             isLoading = false
-            errorMessage = "Network error: \(error.localizedDescription)"
+            debugLog("Fetch network error: \(error.localizedDescription)")
+            errorMessage = "Unable to fetch diary right now. Please try again."
         }
     }
 
@@ -250,6 +331,10 @@ class DiaryService: ObservableObject {
     /// Submits a fully answered diary day and clears local copy on success.
     /// Side effects: records date as submitted and removes local persisted day.
     func submitCompletedDiary(_ diaryDay: DiaryDay) async -> Bool {
+        guard isValidDiaryDate(diaryDay.date) else {
+            errorMessage = "Invalid diary date."
+            return false
+        }
         guard !hasBeenSubmitted(date: diaryDay.date) else {
             errorMessage = "Diary already submitted"
             return false
@@ -259,9 +344,7 @@ class DiaryService: ObservableObject {
             return false
         }
 
-        let base = functionsBaseURL()
-        let urlString = "\(base)diary-submit"
-        guard let url = URL(string: urlString) else {
+        guard let url = endpointURL(path: "diary-submit") else {
             errorMessage = "Invalid diary-submit URL"
             return false
         }
@@ -312,7 +395,9 @@ class DiaryService: ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await executeWithRetry {
+                try await URLSession.shared.data(for: req)
+            }
 
             guard let http = response as? HTTPURLResponse else {
                 isLoading = false
@@ -323,19 +408,26 @@ class DiaryService: ObservableObject {
             if http.statusCode == 200 {
                 // After successful submit, local data is no longer authoritative.
                 recordSubmission(date: diaryDay.date)
-                storage.deleteDiaryDay(date: diaryDay.date)
+                guard storage.deleteDiaryDay(date: diaryDay.date) else {
+                    isLoading = false
+                    errorMessage = "Submitted successfully but failed to clear local cache."
+                    return false
+                }
                 loadLocalDiaries()
+                selectedDiaryDay = nil
                 isLoading = false
                 return true
             } else {
                 let body = String(data: data, encoding: .utf8) ?? "unknown"
                 isLoading = false
-                errorMessage = "Submit failed \(http.statusCode): \(body)"
+                debugLog("Submit failed: \(http.statusCode), body=\(body)")
+                errorMessage = "Submission failed. Please try again."
                 return false
             }
         } catch {
             isLoading = false
-            errorMessage = "Network error: \(error.localizedDescription)"
+            debugLog("Submit network error: \(error.localizedDescription)")
+            errorMessage = "Submission failed. Please try again."
             return false
         }
     }

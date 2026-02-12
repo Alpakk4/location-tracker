@@ -32,9 +32,6 @@ struct location_trackerApp: App {
             MainTabView()
                 .environmentObject(locService)
                 .environmentObject(diaryService)
-                .onAppear {
-                    print("hello world!!!!!")
-                }
         }
     }
 }

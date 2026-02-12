@@ -49,9 +49,13 @@ struct DiaryDayDetailView: View {
     @State private var submitSuccess = false
     @State private var showingSubmitAlert = false
     @State private var showingRefreshAlert = false
+    @State private var showingAlreadySubmittedAlert = false
 
     private var deviceId: String {
-        UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? "anonymous"
+        SecureStore.getString(for: .uid)
+            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
+            ?? ConfigurationDefaults.anonymousUid
     }
 
     /// Build a chronologically sorted timeline of visits and journeys.
@@ -184,14 +188,21 @@ struct DiaryDayDetailView: View {
             Button("Refresh", role: .destructive) {
                 Task {
                     await diaryService.fetchDiary(deviceId: deviceId, date: diaryDay.date)
-                    // Reload the refreshed diary into local state
+                    // Reload the refreshed diary into local state.
                     if let refreshed = diaryService.selectedDiaryDay, refreshed.date == diaryDay.date {
                         diaryDay = refreshed
+                    } else if diaryService.hasBeenSubmitted(date: diaryDay.date) {
+                        showingAlreadySubmittedAlert = true
                     }
                 }
             }
         } message: {
             Text("This will re-fetch your diary from the server and reset your answers. Continue?")
+        }
+        .alert("Diary Already Submitted", isPresented: $showingAlreadySubmittedAlert) {
+            Button("OK") { dismiss() }
+        } message: {
+            Text("This diary was already submitted and can no longer be edited.")
         }
     }
 

@@ -68,7 +68,8 @@ struct DiaryEntry: Codable, Identifiable {
     var isCompleted: Bool {
         guard let cp = confirmedPlace, let ca = confirmedActivity else { return false }
         if !cp || !ca {
-            return userContext != nil && !userContext!.trimmingCharacters(in: .whitespaces).isEmpty
+            guard let userContext else { return false }
+            return !userContext.trimmingCharacters(in: .whitespaces).isEmpty
         }
         return true
     }

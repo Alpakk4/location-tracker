@@ -11,15 +11,21 @@ struct ContentView: View {
     
     // --- Configuration State ---
     @State private var enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
-    @State private var uid = UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? ""
+    @State private var uid = SecureStore.getString(for: .uid)
+        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
+        ?? ""
     
     // --- Home Location State ---
-    @State private var homeLat: Double? = UserDefaults.standard.object(forKey: "home_lat") as? Double
-    @State private var homeLong: Double? = UserDefaults.standard.object(forKey: "home_long") as? Double
-    @State private var isHomeSet: Bool = UserDefaults.standard.bool(forKey: "is_home_set")
+    @State private var homeLat: Double? = SecureStore.getDouble(for: .homeLatitude)
+    @State private var homeLong: Double? = SecureStore.getDouble(for: .homeLongitude)
+    @State private var isHomeSet: Bool = UserDefaults.standard.bool(forKey: ConfigurationKeys.isHomeSet)
     
     // --- User ID Lock State ---
-    @State private var isUidLocked: Bool = !(UserDefaults.standard.string(forKey: ConfigurationKeys.uid) ?? "").isEmpty
+    @State private var isUidLocked: Bool = !(SecureStore.getString(for: .uid)
+        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
+        ?? "").isEmpty
     @State private var showingUidPasswordAlert = false
     @State private var uidEnteredPassword = ""
     
@@ -125,6 +131,11 @@ struct ContentView: View {
                                     .onChange(of: uid) {
                                         NetworkingService.shared.uid = uid
                                         defaults.set(uid, forKey: ConfigurationKeys.uid)
+                                        if uid.isEmpty {
+                                            _ = SecureStore.remove(.uid)
+                                        } else {
+                                            _ = SecureStore.setString(uid, for: .uid)
+                                        }
                                     }
                                     .onSubmit {
                                         if !uid.isEmpty {
@@ -205,6 +216,22 @@ struct ContentView: View {
             }
         }
         .padding()
+        .onAppear {
+            // Keep reporting behavior consistent across cold launch and toggle changes.
+            if let legacyUid = defaults.string(forKey: ConfigurationKeys.legacyUid),
+               defaults.string(forKey: ConfigurationKeys.uid) == nil {
+                uid = legacyUid
+                defaults.set(legacyUid, forKey: ConfigurationKeys.uid)
+                _ = SecureStore.setString(legacyUid, for: .uid)
+                defaults.removeObject(forKey: ConfigurationKeys.legacyUid)
+            }
+            NetworkingService.shared.uid = uid.isEmpty ? nil : uid
+            if enableReporting {
+                loc.start()
+            } else {
+                loc.stop()
+            }
+        }
         .alert("Set Home Location?", isPresented: $showingSetHomeAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Confirm", role: .destructive) {
@@ -212,9 +239,9 @@ struct ContentView: View {
                     homeLat = last.coordinate.latitude
                     homeLong = last.coordinate.longitude
                     isHomeSet = true
-                    defaults.set(homeLat, forKey: "home_lat")
-                    defaults.set(homeLong, forKey: "home_long")
-                    defaults.set(true, forKey: "is_home_set")
+                    _ = SecureStore.setDouble(last.coordinate.latitude, for: .homeLatitude)
+                    _ = SecureStore.setDouble(last.coordinate.longitude, for: .homeLongitude)
+                    defaults.set(true, forKey: ConfigurationKeys.isHomeSet)
                 }
             }
         } message: {
@@ -226,7 +253,11 @@ struct ContentView: View {
             Button("Unlock") {
                 if enteredPassword == Environment.adminPassword {
                     isHomeSet = false
-                    defaults.set(false, forKey: "is_home_set")
+                    homeLat = nil
+                    homeLong = nil
+                    _ = SecureStore.remove(.homeLatitude)
+                    _ = SecureStore.remove(.homeLongitude)
+                    defaults.set(false, forKey: ConfigurationKeys.isHomeSet)
                 } else {
                     // Wrong password – trigger wobble
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -303,7 +334,6 @@ struct OnboardingView: View {
 
             Button(action: {
                 loc.requestAuth()
-                hasCompletedOnboarding = true
             }) {
                 Text("Enable Always Access")
                     .fontWeight(.bold)
@@ -315,6 +345,11 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 40)
             .padding(.bottom, 40)
+        }
+        .onChange(of: loc.authorizationStatus) {
+            if loc.authorizationStatus == .authorizedAlways || loc.authorizationStatus == .authorizedWhenInUse {
+                hasCompletedOnboarding = true
+            }
         }
     }
 }
