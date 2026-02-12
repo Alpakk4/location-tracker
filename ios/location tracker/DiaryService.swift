@@ -9,6 +9,10 @@ import Foundation
 import SwiftUI
 
 @MainActor
+/// Coordinates diary state across network, local persistence, and submission lifecycle.
+/// Source of truth:
+/// - generated visit/journey data comes from Supabase
+/// - in-progress questionnaire answers live in local storage until submit
 class DiaryService: ObservableObject {
 
     @Published var diaryDays: [DiaryDay] = []
@@ -25,10 +29,12 @@ class DiaryService: ObservableObject {
 
     // MARK: - Local Data
 
+    /// Reloads all locally saved diary days into published state.
     func loadLocalDiaries() {
         diaryDays = storage.loadAllDiaryDays()
     }
 
+    /// Persists a day and refreshes in-memory collections used by the UI.
     func saveDiaryDay(_ day: DiaryDay) {
         storage.saveDiaryDay(day)
         loadLocalDiaries()
@@ -36,40 +42,46 @@ class DiaryService: ObservableObject {
 
     // MARK: - Submission Tracking
 
+    /// Records successful submission dates to prevent duplicate prompts and posts.
     func recordSubmission(date: String) {
         var dates = submittedDates()
         dates.insert(date)
         UserDefaults.standard.set(Array(dates), forKey: submittedDatesKey)
     }
 
+    /// Returns all locally known submitted dates.
     func submittedDates() -> Set<String> {
         let arr = UserDefaults.standard.stringArray(forKey: submittedDatesKey) ?? []
         return Set(arr)
     }
 
+    /// True when this day has already been accepted by the backend.
     func hasBeenSubmitted(date: String) -> Bool {
         submittedDates().contains(date)
     }
 
     // MARK: - Local-First Loading
 
-    /// Loads diary from local storage if available; fetches from Supabase only if no local copy exists.
+    /// Local-first load policy:
+    /// - skip fully submitted days
+    /// - reuse local progress when available
+    /// - otherwise fetch fresh generated data from `diary-maker`
     func loadOrFetchDiary(deviceId: String, date: String) async {
-        // Guard: don't load or fetch a diary that was already submitted
+        // Guard: do not surface or refetch a day already confirmed as submitted.
         if hasBeenSubmitted(date: date) {
             selectedDiaryDay = nil
             return
         }
 
-        // Check local storage first
+        // Local storage owns in-progress answers, so prefer it over a remote refetch.
         if let local = storage.loadDiaryDay(date: date), local.deviceId == deviceId {
             selectedDiaryDay = local
             return
         }
-        // No local diary – fetch from server
+        // No local diary exists; bootstrap from server-generated visits and journeys.
         await fetchDiary(deviceId: deviceId, date: date)
-        // After fetch, set selectedDiaryDay from storage if available.
-        // If fetchDiary already set a transient empty selectedDiaryDay, don't overwrite it.
+        // If a non-empty result was persisted, select it.
+        // Keep transient empty-day selection unchanged.
         if let saved = storage.loadDiaryDay(date: date) {
             selectedDiaryDay = saved
         }
@@ -88,6 +100,8 @@ class DiaryService: ObservableObject {
 
     // MARK: - Fetch Diary (calls diary-maker)
 
+    /// Fetches generated diary data and reconciles it with any saved local answers.
+    /// Merge contract: preserve prior user answers when item ids are stable across fetches.
     func fetchDiary(deviceId: String, date: String) async {
         let base = functionsBaseURL()
         let urlString = "\(base)diary-maker"
@@ -131,11 +145,11 @@ class DiaryService: ObservableObject {
                 return
             }
 
-            // Check if the server says this diary was already submitted
+            // Handle backend idempotency response: mark as submitted locally and stop.
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let alreadySubmitted = json["already_submitted"] as? Bool,
                alreadySubmitted {
-                // Record locally so we don't ask again
+                // Persist this fact so future UI sessions do not prompt again.
                 recordSubmission(date: date)
                 isLoading = false
                 selectedDiaryDay = nil
@@ -144,7 +158,7 @@ class DiaryService: ObservableObject {
 
             let makerResponse = try JSONDecoder().decode(DiaryMakerResponse.self, from: data)
 
-            // Transform raw entries (visit clusters) into DiaryEntry with activity labels
+            // API DTO -> local model mapping for visits.
             let entries: [DiaryEntry] = makerResponse.visits.map { raw in
                 DiaryEntry(
                     id: raw.entryid,
@@ -164,7 +178,7 @@ class DiaryService: ObservableObject {
                 )
             }
 
-            // Transform raw journeys into DiaryJourney
+            // API DTO -> local model mapping for journeys.
             let journeys: [DiaryJourney] = makerResponse.journeys.map { raw in
                 DiaryJourney(
                     id: raw.journey_id,
@@ -184,7 +198,7 @@ class DiaryService: ObservableObject {
 
             let dayId = "\(deviceId)_\(date)"
 
-            // Don't persist empty diaries — set transient selectedDiaryDay for the view to inspect
+            // Avoid caching empty days. Views can still inspect a transient empty result.
             if entries.isEmpty && journeys.isEmpty {
                 let emptyDay = DiaryDay(id: dayId, deviceId: deviceId, date: date, entries: [], journeys: [])
                 selectedDiaryDay = emptyDay
@@ -193,9 +207,9 @@ class DiaryService: ObservableObject {
                 return
             }
 
-            // If a local diary already exists for this date, merge: keep answered entries and journeys
+            // Merge strategy: server may regenerate clusters, but stable ids keep prior answers.
             if var existing = storage.loadDiaryDay(date: date), existing.deviceId == deviceId {
-                // Merge visits
+                // Merge visits by id and keep answered values when present.
                 let existingById = Dictionary(uniqueKeysWithValues: existing.entries.map { ($0.id, $0) })
                 let mergedEntries = entries.map { entry -> DiaryEntry in
                     if let prev = existingById[entry.id] {
@@ -205,7 +219,7 @@ class DiaryService: ObservableObject {
                 }
                 existing.entries = mergedEntries
 
-                // Merge journeys
+                // Merge journeys by id and keep answered values when present.
                 let existingJourneysById = Dictionary(uniqueKeysWithValues: existing.journeys.map { ($0.id, $0) })
                 let mergedJourneys = journeys.map { journey -> DiaryJourney in
                     if let prev = existingJourneysById[journey.id] {
@@ -233,6 +247,8 @@ class DiaryService: ObservableObject {
 
     // MARK: - Submit Completed Diary (calls diary-submit)
 
+    /// Submits a fully answered diary day and clears local copy on success.
+    /// Side effects: records date as submitted and removes local persisted day.
     func submitCompletedDiary(_ diaryDay: DiaryDay) async -> Bool {
         guard !hasBeenSubmitted(date: diaryDay.date) else {
             errorMessage = "Diary already submitted"
@@ -253,6 +269,7 @@ class DiaryService: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // Local model -> submission DTO mapping for visits.
         let submitEntries = diaryDay.entries.map { entry in
             DiarySubmitEntry(
                 source_entryid: entry.id,
@@ -263,6 +280,7 @@ class DiaryService: ObservableObject {
             )
         }
 
+        // Local model -> submission DTO mapping for journeys.
         let submitJourneys = diaryDay.journeys.map { journey in
             DiarySubmitJourney(
                 source_journey_id: journey.id,
@@ -303,7 +321,7 @@ class DiaryService: ObservableObject {
             }
 
             if http.statusCode == 200 {
-                // Success – record submission and delete local data
+                // After successful submit, local data is no longer authoritative.
                 recordSubmission(date: diaryDay.date)
                 storage.deleteDiaryDay(date: diaryDay.date)
                 loadLocalDiaries()

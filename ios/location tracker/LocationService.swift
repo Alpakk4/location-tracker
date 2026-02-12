@@ -9,33 +9,38 @@ import Foundation
 import CoreLocation
 import CoreMotion
 
+/// Collects location and motion activity, then forwards normalized updates to NetworkingService.
+/// Ownership: this class produces capture-time metadata; persistence and upload policy live elsewhere.
 class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let activityManager = CMMotionActivityManager()
     @Published var currentMotion: String = "STILL"
     @Published var currentConfidence: String = "unknown"
     @Published var lastLocation: CLLocation?
-    
+
     override init() {
         super.init()
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = true
-        // Optional: Only trigger if moved 10 meters (doesn't consider elevation)
+        // Limit callback frequency so capture is useful without excessive upload churn.
         manager.distanceFilter = 10
-        //10m & 5 minute timer limit will prevent the actual network calls from being too frequent. Despite high request for accuracy
+        // Keep high accuracy because diary clustering benefits from precise coordinates.
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
-    
+
+    /// Requests always-on permission because tracking can continue in background.
     func requestAuth() {
         print("requesting location service auth")
         manager.requestAlwaysAuthorization()
     }
-    
+
+    /// Starts both location callbacks and motion activity updates.
+    /// If motion is unavailable, location still continues.
     func start() {
         print("Starting location service")
         manager.startUpdatingLocation()
-        
+
         guard CMMotionActivityManager.isActivityAvailable() else {
             print("Motion activity not available on this device")
             return
@@ -47,13 +52,17 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("Activity updated: \(self.currentMotion) (\(self.currentConfidence))")
         }
     }
-    
+
+    /// Stops all active sensors owned by this service.
     func stop() {
         print("Stopping location service")
         manager.stopUpdatingLocation()
         activityManager.stopActivityUpdates()
     }
-    
+
+    // MARK: - Mapping Helpers
+
+    /// Maps Core Motion flags into backend-compatible motion labels.
     private func mapActivity(_ activity: CMMotionActivity) -> String {
         if activity.walking    { return "WALKING" }
         if activity.running    { return "RUNNING" }
@@ -62,7 +71,8 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         if activity.stationary { return "STILL" }
         return "UNKNOWN"
     }
-    
+
+    /// Maps confidence enum to lowercase labels expected by downstream services.
     private func mapConfidence(_ confidence: CMMotionActivityConfidence) -> String {
         switch confidence {
         case .low:    return "low"
@@ -71,7 +81,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         @unknown default: return "unknown"
         }
     }
-    
+
+    // MARK: - CLLocationManagerDelegate
+
+    /// Forwards the latest location together with current motion context.
+    /// Contract: `lastLocation` updates on main queue for UI observation.
     func locationManager(_ manager: CLLocationManager,
                          didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }

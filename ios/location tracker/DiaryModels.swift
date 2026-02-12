@@ -7,13 +7,15 @@ import Foundation
 
 // MARK: - Supabase diary-maker Response
 
-/// Wrapper for the diary-maker response containing both visits and journeys.
+/// Response from `diary-maker`.
+/// This is a transport-only wrapper used before mapping to local app models.
 struct DiaryMakerResponse: Codable {
     let visits: [DiaryMakerEntry]
     let journeys: [DiaryMakerJourney]
 }
 
-/// Raw entry returned by the diary-maker Supabase function (now represents a visit cluster).
+/// Raw visit cluster returned by `diary-maker`.
+/// Ownership: server-side shape and naming (snake_case) to match API contracts.
 struct DiaryMakerEntry: Codable {
     let entryid: String
     let entry_ids: [String]
@@ -27,7 +29,8 @@ struct DiaryMakerEntry: Codable {
     let ping_count: Int
 }
 
-/// Raw journey returned by the diary-maker Supabase function.
+/// Raw journey segment returned by `diary-maker`.
+/// Relationship hint: optional links point to adjacent visits when they can be inferred.
 struct DiaryMakerJourney: Codable {
     let journey_id: String
     let entry_ids: [String]
@@ -43,7 +46,8 @@ struct DiaryMakerJourney: Codable {
 
 // MARK: - Local Diary Models
 
-/// Represents a single diary entry (a visit cluster) with user questionnaire answers.
+/// Local visit model shown in diary UI and persisted on device until submission.
+/// Ownership: generated fields come from server, answer fields come from user interaction.
 struct DiaryEntry: Codable, Identifiable {
     let id: String              // entryid from Supabase (first ping in cluster)
     let entryIds: [String]      // all ping entryids in this visit cluster
@@ -60,6 +64,7 @@ struct DiaryEntry: Codable, Identifiable {
     var activityLabel: String       // derived from PlaceActivityMapping
     var userContext: String?         // required if either answer is "no"
 
+    /// Invariant: if either confirmation is false, non-empty `userContext` is required.
     var isCompleted: Bool {
         guard let cp = confirmedPlace, let ca = confirmedActivity else { return false }
         if !cp || !ca {
@@ -80,7 +85,8 @@ struct DiaryEntry: Codable, Identifiable {
     }
 }
 
-/// Represents a journey segment between high-confidence visits with user answers.
+/// Local journey model shown in diary UI and persisted until submission.
+/// Relationship: `fromVisitId` and `toVisitId` may point to surrounding `DiaryEntry` ids.
 struct DiaryJourney: Codable, Identifiable {
     let id: String              // journey_id (first ping's entryid)
     let entryIds: [String]
@@ -95,6 +101,7 @@ struct DiaryJourney: Codable, Identifiable {
     var confirmedTransport: Bool?   // nil = unanswered
     var travelReason: String?       // optional free text, nullable
 
+    /// Invariant: a journey is complete once transport confirmation is provided.
     var isCompleted: Bool {
         confirmedTransport != nil
     }
@@ -133,7 +140,8 @@ struct DiaryJourney: Codable, Identifiable {
     }
 }
 
-/// Groups diary entries and journeys for a single day.
+/// Aggregate local state for one calendar day and one device.
+/// `DiaryDay` is the unit persisted, loaded, and submitted by `DiaryService`.
 struct DiaryDay: Codable, Identifiable {
     let id: String              // "deviceId_YYYY-MM-DD"
     let deviceId: String
@@ -141,6 +149,7 @@ struct DiaryDay: Codable, Identifiable {
     var entries: [DiaryEntry]
     var journeys: [DiaryJourney]
 
+    /// Invariant: at least one visit must exist to consider a day submit-ready.
     var isCompleted: Bool {
         let entriesDone = entries.isEmpty || entries.allSatisfy { $0.isCompleted }
         let journeysDone = journeys.isEmpty || journeys.allSatisfy { $0.isCompleted }
@@ -155,7 +164,7 @@ struct DiaryDay: Codable, Identifiable {
         entries.count + journeys.count
     }
 
-    // Custom decoder for backward compatibility: existing JSON without "journeys" key
+    // Backward compatibility with older cached payloads that predate journey support.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -183,7 +192,8 @@ extension DiaryDay: Hashable {
 
 // MARK: - Submission Payload
 
-/// Payload sent to the diary-submit Supabase function.
+/// Submission wrapper sent to `diary-submit`.
+/// Contract: references source ids from generated visits/journeys plus user answers.
 struct DiarySubmitPayload: Codable {
     let deviceId: String
     let date: String
@@ -191,6 +201,7 @@ struct DiarySubmitPayload: Codable {
     let journeys: [DiarySubmitJourney]
 }
 
+/// User-confirmed answers for one visit cluster.
 struct DiarySubmitEntry: Codable {
     let source_entryid: String
     let activity_label: String
@@ -199,6 +210,7 @@ struct DiarySubmitEntry: Codable {
     let user_context: String?
 }
 
+/// User-confirmed answers for one journey segment.
 struct DiarySubmitJourney: Codable {
     let source_journey_id: String
     let confirmed_transport: Bool
