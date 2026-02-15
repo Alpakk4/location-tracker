@@ -238,6 +238,7 @@ class DiaryService: ObservableObject {
                     otherTypes: raw.other_types,
                     motionType: raw.motion_type,
                     visitConfidence: raw.visit_confidence,
+                    visitType: raw.visit_type,
                     pingCount: raw.ping_count,
                     confirmedPlace: nil,
                     confirmedActivity: nil,

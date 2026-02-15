@@ -26,6 +26,7 @@ struct DiaryMakerEntry: Codable {
     let other_types: [String]
     let motion_type: MotionType
     let visit_confidence: String   // "high", "medium", or "low"
+    let visit_type: String?        // "confirmed_visit", "visit", "brief_stop", "traffic_stop"
     let ping_count: Int
 }
 
@@ -58,6 +59,7 @@ struct DiaryEntry: Codable, Identifiable {
     let otherTypes: [String]
     let motionType: MotionType
     let visitConfidence: String     // "high", "medium", or "low"
+    let visitType: String?          // "confirmed_visit", "visit", "brief_stop", "traffic_stop"
     let pingCount: Int
     var confirmedPlace: Bool?       // nil = unanswered
     var confirmedActivity: Bool?    // nil = unanswered

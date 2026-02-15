@@ -29,6 +29,8 @@ interface RawPing {
   horizontal_accuracy: number | null;
 }
 
+type VisitType = "confirmed_visit" | "visit" | "brief_stop" | "traffic_stop";
+
 interface ClusterResult {
   entryid: string;
   entry_ids: string[];
@@ -39,6 +41,7 @@ interface ClusterResult {
   other_types: string[];
   motion_type: MotionType;
   visit_confidence: "high" | "medium" | "low";
+  visit_type: VisitType;
   ping_count: number;
 }
 
@@ -114,16 +117,113 @@ function mode<T>(arr: T[]): T {
   return best;
 }
 
-/** Numeric confidence rank for ordering (lower = worse). */
-function confidenceRank(c: "high" | "medium" | "low"): number {
-  if (c === "high") return 3;
-  if (c === "medium") return 2;
-  return 1;
-}
+/** Compute cluster-level confidence and visit type using a weighted multi-signal score.
+ *
+ *  Signals:
+ *    1. Pair-wise spatial confidence (weighted average of high/medium/low pairs)
+ *    2. GPS accuracy quality (average horizontal_accuracy of pings)
+ *    3. Ping count (more data points = more trustworthy)
+ *    4. Motion type distribution (still/walking boost, automotive penalty)
+ *
+ *  The first three signals are combined additively into a base composite.
+ *  The motion distribution acts as a multiplicative modifier and determines visit_type.
+ */
+function computeClusterConfidence(pingsInCluster: RawPing[]): {
+  visit_confidence: "high" | "medium" | "low";
+  visit_type: VisitType;
+} {
+  // ----- Signal 1: Pair-wise spatial confidence (weighted average) -----
+  let pairScore: number;
 
-/** Minimum confidence of two levels. */
-function minConfidence(a: "high" | "medium" | "low", b: "high" | "medium" | "low"): "high" | "medium" | "low" {
-  return confidenceRank(a) <= confidenceRank(b) ? a : b;
+  if (pingsInCluster.length < 2) {
+    // Single ping — no consecutive pairs to evaluate, pessimistic default
+    pairScore = 0.33;
+  } else {
+    let highCount = 0, medCount = 0, lowCount = 0;
+    for (let i = 1; i < pingsInCluster.length; i++) {
+      const dist = distanceBetween(
+        pingsInCluster[i - 1].position_from_home,
+        pingsInCluster[i].position_from_home,
+      );
+      const pc = pairConfidence(
+        dist,
+        pingsInCluster[i - 1].motion_type,
+        pingsInCluster[i].motion_type,
+      );
+      if (pc === "high") highCount++;
+      else if (pc === "medium") medCount++;
+      else lowCount++;
+    }
+    const totalPairs = highCount + medCount + lowCount;
+    // Weighted average: high=3, medium=2, low=1, normalised to [0,1]
+    pairScore = (3 * highCount + 2 * medCount + lowCount) / (3 * totalPairs);
+  }
+
+  // ----- Signal 2: GPS accuracy quality (lower metres = better) -----
+  const accuracies = pingsInCluster
+    .map(p => p.horizontal_accuracy)
+    .filter((a): a is number => a != null);
+
+  let accuracyFactor: number;
+  if (accuracies.length === 0) {
+    accuracyFactor = 0.7; // no accuracy data — neutral-conservative
+  } else {
+    const avgAccuracy = accuracies.reduce((s, a) => s + a, 0) / accuracies.length;
+    if (avgAccuracy <= 10) accuracyFactor = 1.0;
+    else if (avgAccuracy <= 30) accuracyFactor = 0.9;
+    else if (avgAccuracy <= 65) accuracyFactor = 0.75;
+    else accuracyFactor = 0.5;
+  }
+
+  // ----- Signal 3: Ping count (more data = more trustworthy) -----
+  const count = pingsInCluster.length;
+  let pingCountFactor: number;
+  if (count === 1) pingCountFactor = 0.3;
+  else if (count <= 3) pingCountFactor = 0.65;
+  else if (count <= 6) pingCountFactor = 0.85;
+  else pingCountFactor = 1.0;
+
+  // ----- Signal 4: Motion type distribution -----
+  const motionCounts: Record<string, number> = {};
+  for (const p of pingsInCluster) {
+    const m = p.motion_type.motion.toLowerCase();
+    motionCounts[m] = (motionCounts[m] ?? 0) + 1;
+  }
+  const total = pingsInCluster.length;
+  const stillWalkingProp =
+    ((motionCounts["still"] ?? 0) + (motionCounts["walking"] ?? 0)) / total;
+  const automotiveProp = (motionCounts["automotive"] ?? 0) / total;
+
+  let motionMultiplier = 1.0;
+  let visitType: VisitType = "visit";
+
+  if (stillWalkingProp >= 0.7) {
+    // Stationary-dominant cluster — strong indicator of a real visit
+    motionMultiplier = 1.15;
+    visitType = "confirmed_visit";
+  } else if (automotiveProp >= 0.5) {
+    // Automotive-dominant — likely a traffic stop, not a genuine visit
+    motionMultiplier = 0.6;
+    visitType = "traffic_stop";
+  }
+
+  // ----- Composite score -----
+  // Pair confidence is the primary signal (55%); accuracy (25%) and ping count (20%) modulate
+  const baseComposite =
+    pairScore       * 0.55 +
+    accuracyFactor  * 0.25 +
+    pingCountFactor * 0.20;
+
+  // Motion distribution acts as a multiplicative modifier
+  const finalScore = Math.min(1.0, baseComposite * motionMultiplier);
+
+  // Threshold into confidence bands
+  let visit_confidence: "high" | "medium" | "low";
+  if (finalScore >= 0.80) visit_confidence = "high";
+  else if (finalScore >= 0.55) visit_confidence = "medium";
+  else visit_confidence = "low";
+
+  return { visit_confidence, visit_type: visitType };
 }
 
 /** Duration in whole seconds between two ISO timestamps. */
@@ -192,16 +292,8 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 
   // Build representative entries
   return clusters.map((pingsInCluster) => {
-    // Confidence: evaluate every consecutive pair, take the minimum
-    let clusterConfidence: "high" | "medium" | "low" = "high"; // start optimistic
-    for (let i = 1; i < pingsInCluster.length; i++) {
-      const dist = distanceBetween(
-        pingsInCluster[i - 1].position_from_home,
-        pingsInCluster[i].position_from_home,
-      );
-      const pc = pairConfidence(dist, pingsInCluster[i - 1].motion_type, pingsInCluster[i].motion_type);
-      clusterConfidence = minConfidence(clusterConfidence, pc);
-    }
+    // Multi-signal confidence scoring (replaces old min-based approach)
+    const { visit_confidence, visit_type } = computeClusterConfidence(pingsInCluster);
 
     // Representative fields
     const firstPing = pingsInCluster[0];
@@ -225,7 +317,8 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
       primary_type: mode(primaryTypes),
       other_types: allOtherTypes,
       motion_type: JSON.parse(motionMode) as MotionType,
-      visit_confidence: clusterConfidence,
+      visit_confidence,
+      visit_type,
       ping_count: pingsInCluster.length,
     };
   });
@@ -244,6 +337,7 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   for (const c of clusters) {
     if (c.cluster_duration_s < MIN_DWELL_SECONDS) {
       c.visit_confidence = "low";
+      c.visit_type = "brief_stop";
     }
   }
 
@@ -558,6 +652,7 @@ serve(async (req) => {
           other_types: c.other_types,
           motion_type: c.motion_type,
           visit_confidence: c.visit_confidence,
+          visit_type: c.visit_type,
           ping_count: c.ping_count,
           cluster_duration_s: c.cluster_duration_s,
           started_at: c.created_at,
