@@ -17,9 +17,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var currentMotion: String = "STILL"
     @Published var currentConfidence: String = "unknown"
     @Published var lastLocation: CLLocation?
-    @Published var authorizationStatus: CLAuthorizationStatus = CLLocationManager.authorizationStatus()
+    @Published var authorizationStatus: CLAuthorizationStatus
 
     override init() {
+        authorizationStatus = manager.authorizationStatus
         super.init()
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = true

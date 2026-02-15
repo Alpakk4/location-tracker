@@ -9,6 +9,7 @@ class NetworkingService {
     static let shared = NetworkingService()
     private var last: Date?
     private let defaults = UserDefaults.standard
+    private let manager = CLLocationManager()
     
     var uid: String? {
         didSet {
@@ -35,8 +36,8 @@ class NetworkingService {
     }
     
     func sendLocation(_ location: CLLocation, activity: String, confidence: String, force: Bool = false) {
-        guard CLLocationManager.authorizationStatus() == .authorizedAlways ||
-                CLLocationManager.authorizationStatus() == .authorizedWhenInUse else {
+        let status = manager.authorizationStatus
+        guard status == .authorizedAlways || status == .authorizedWhenInUse else {
             return
         }
         #if DEBUG
