@@ -404,6 +404,15 @@ struct DiaryJourneyCard: View {
             .map { (mode: $0.key, ratio: $0.value) }
     }
 
+    /// Confidence badge color for journey quality.
+    private var confidenceColor: Color {
+        switch journey.journeyConfidence {
+        case "high":   return .green
+        case "medium": return .orange
+        default:       return .red
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
 
@@ -438,6 +447,17 @@ struct DiaryJourneyCard: View {
                     .foregroundColor(.white)
                     .background(Color.blue)
                     .cornerRadius(6)
+
+                if let conf = journey.journeyConfidence {
+                    Text(conf.uppercased())
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .foregroundColor(.white)
+                        .background(confidenceColor)
+                        .cornerRadius(6)
+                }
 
                 Text(journey.formattedDuration)
                     .font(.caption)

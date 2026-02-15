@@ -260,6 +260,7 @@ class DiaryService: ObservableObject {
                     endedAt: raw.ended_at,
                     journeyDurationSeconds: raw.journey_duration_s,
                     pingCount: raw.ping_count,
+                    journeyConfidence: raw.journey_confidence,
                     confirmedTransport: nil,
                     travelReason: nil
                 )

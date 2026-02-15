@@ -43,6 +43,7 @@ struct DiaryMakerJourney: Codable {
     let ended_at: String
     let journey_duration_s: Int
     let ping_count: Int
+    let journey_confidence: String?   // "high", "medium", or "low"
 }
 
 // MARK: - Local Diary Models
@@ -101,6 +102,7 @@ struct DiaryJourney: Codable, Identifiable {
     let endedAt: String
     let journeyDurationSeconds: Int
     let pingCount: Int
+    let journeyConfidence: String?  // "high", "medium", or "low"
     var confirmedTransport: Bool?   // nil = unanswered
     var travelReason: String?       // optional free text, nullable
 

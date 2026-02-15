@@ -56,6 +56,7 @@ interface JourneyResult {
   ended_at: string;
   journey_duration_s: number;
   ping_count: number;
+  journey_confidence: "high" | "medium" | "low";
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +233,49 @@ function durationSeconds(startISO: string, endISO: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// GPS Smoothing (moving median on Cartesian offsets)
+// ---------------------------------------------------------------------------
+
+/** Return the median of a numeric array. */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** Apply a moving-median filter over a window of 3 pings to reduce GPS noise.
+ *  Only smooths Cartesian offsets (x_m, y_m); pings without Cartesian data pass through.
+ *  Returns new array — does not mutate originals. */
+function smoothPings(pings: RawPing[]): RawPing[] {
+  if (pings.length < 3) return pings;
+  const WINDOW = 3;
+  return pings.map((ping, i) => {
+    // Only smooth pings that have Cartesian coordinates
+    if (ping.position_from_home.x_m == null || ping.position_from_home.y_m == null) return ping;
+
+    const start = Math.max(0, i - Math.floor(WINDOW / 2));
+    const end = Math.min(pings.length, start + WINDOW);
+    const windowPings = pings.slice(start, end)
+      .filter(p => p.position_from_home.x_m != null && p.position_from_home.y_m != null);
+
+    if (windowPings.length < 2) return ping;
+
+    const medianX = median(windowPings.map(p => p.position_from_home.x_m!));
+    const medianY = median(windowPings.map(p => p.position_from_home.y_m!));
+
+    // Return a new ping with smoothed position; preserve all other fields
+    return {
+      ...ping,
+      position_from_home: {
+        ...ping.position_from_home,
+        x_m: medianX,
+        y_m: medianY,
+      },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Clustering (centroid-anchored)
 // ---------------------------------------------------------------------------
 
@@ -379,7 +423,7 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
 }
 
 // ---------------------------------------------------------------------------
-// Journey segmentation: split pings between high-confidence visits by transport
+// Journey segmentation: split pings between medium+ confidence visits by transport
 // ---------------------------------------------------------------------------
 
 /** Active transport modes (exclude "still" and "unknown" which get absorbed). */
@@ -390,8 +434,92 @@ function normaliseMotion(m: string): string {
   return m.toLowerCase();
 }
 
+/** Expected ping interval in seconds per transport mode (matches iOS throttle intervals). */
+const EXPECTED_INTERVAL: Record<string, number> = {
+  walking: 120,
+  running: 120,
+  cycling: 420,
+  automotive: 600,
+};
+
+/** Map visit confidence labels to numeric scores for anchor quality calculation. */
+function visitConfidenceScore(conf: "high" | "medium" | "low"): number {
+  if (conf === "high") return 1.0;
+  if (conf === "medium") return 0.66;
+  return 0.33;
+}
+
+/** Plausible speed ranges in km/h per transport mode. */
+const SPEED_RANGES: Record<string, { min: number; max: number }> = {
+  walking:    { min: 0, max: 15 },
+  running:    { min: 0, max: 25 },
+  cycling:    { min: 0, max: 60 },
+  automotive: { min: 3, max: 200 },
+};
+
 /**
- * Segment pings between consecutive high-confidence visits into journeys.
+ * Compute a journey confidence score from four signals:
+ *   1. Mode dominance (40%): consistency of the primary transport mode
+ *   2. Ping density  (35%): how well-sampled the journey is relative to expectations
+ *   3. Anchor quality (25%): confidence of the bounding visits
+ *   4. Plausibility (multiplicative): average speed must be reasonable for the mode
+ */
+function computeJourneyConfidence(
+  segmentPings: RawPing[],
+  primaryTransport: string,
+  transportProportions: Record<string, number>,
+  durationS: number,
+  fromVisit: ClusterResult,
+  toVisit: ClusterResult,
+): "high" | "medium" | "low" {
+  // --- Signal 1: Mode dominance (40%) ---
+  const dominance = transportProportions[primaryTransport] ?? 0;
+  let modeScore: number;
+  if (dominance >= 0.8) modeScore = 1.0;
+  else if (dominance >= 0.6) modeScore = 0.75;
+  else modeScore = 0.5;
+
+  // --- Signal 2: Ping density (35%) ---
+  const expectedInterval = EXPECTED_INTERVAL[primaryTransport] ?? 300;
+  const expectedPings = durationS > 0 ? durationS / expectedInterval : 1;
+  const densityScore = Math.min(1.0, segmentPings.length / Math.max(1, expectedPings));
+
+  // --- Signal 3: Anchor quality (25%) ---
+  const anchorScore =
+    (visitConfidenceScore(fromVisit.visit_confidence) +
+     visitConfidenceScore(toVisit.visit_confidence)) / 2;
+
+  // --- Base composite ---
+  const baseComposite =
+    modeScore     * 0.40 +
+    densityScore  * 0.35 +
+    anchorScore   * 0.25;
+
+  // --- Signal 4: Plausibility check (multiplicative) ---
+  let plausibilityMultiplier = 1.0;
+  if (durationS > 0 && segmentPings.length >= 2) {
+    const first = segmentPings[0];
+    const last = segmentPings[segmentPings.length - 1];
+    const displacementM = distanceBetween(
+      first.position_from_home,
+      last.position_from_home,
+    );
+    const speedKmH = (displacementM / 1000) / (durationS / 3600);
+    const range = SPEED_RANGES[primaryTransport];
+    if (range && (speedKmH > range.max || speedKmH < range.min)) {
+      plausibilityMultiplier = 0.5;
+    }
+  }
+
+  const finalScore = Math.min(1.0, baseComposite * plausibilityMultiplier);
+
+  if (finalScore >= 0.75) return "high";
+  if (finalScore >= 0.50) return "medium";
+  return "low";
+}
+
+/**
+ * Segment pings between consecutive medium-or-higher confidence visits into journeys.
  * Each journey is a contiguous run of pings sharing the same active transport mode.
  * "still"/"unknown" pings are absorbed into the preceding active segment.
  */
@@ -399,19 +527,19 @@ function segmentJourneys(
   allPings: RawPing[],
   selectedVisits: ClusterResult[],
 ): JourneyResult[] {
-  // 1. Identify high-confidence visits in chronological order
-  const highVisits = selectedVisits
-    .filter(v => v.visit_confidence === "high")
+  // 1. Identify medium+ confidence visits in chronological order as journey anchors
+  const anchorVisits = selectedVisits
+    .filter(v => v.visit_confidence === "high" || v.visit_confidence === "medium")
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  if (highVisits.length < 2) return []; // need at least two anchors
+  if (anchorVisits.length < 2) return []; // need at least two anchors
 
   const journeys: JourneyResult[] = [];
 
-  // 2. For each consecutive pair of high-confidence visits, extract gap pings
-  for (let vi = 0; vi < highVisits.length - 1; vi++) {
-    const vA = highVisits[vi];
-    const vB = highVisits[vi + 1];
+  // 2. For each consecutive pair of anchor visits, extract gap pings
+  for (let vi = 0; vi < anchorVisits.length - 1; vi++) {
+    const vA = anchorVisits[vi];
+    const vB = anchorVisits[vi + 1];
 
     const gapStart = new Date(vA.ended_at).getTime();
     const gapEnd   = new Date(vB.created_at).getTime();
@@ -487,6 +615,16 @@ function segmentJourneys(
 
       const first = seg[0];
       const last  = seg[seg.length - 1];
+      const segDuration = durationSeconds(first.created_at, last.created_at);
+
+      const journey_confidence = computeJourneyConfidence(
+        seg,
+        primaryTransport,
+        proportions,
+        segDuration,
+        vA,
+        vB,
+      );
 
       journeys.push({
         journey_id: first.entryid,
@@ -497,8 +635,9 @@ function segmentJourneys(
         transport_proportions: proportions,
         started_at: first.created_at,
         ended_at: last.created_at,
-        journey_duration_s: durationSeconds(first.created_at, last.created_at),
+        journey_duration_s: segDuration,
         ping_count: seg.length,
+        journey_confidence,
       });
     }
   }
@@ -598,15 +737,17 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    // 5. Filter out inaccurate pings, then cluster, classify, and select
+    // 5. Filter out inaccurate pings, then smooth, cluster, classify, and select
     const MAX_ACCURACY_M = 100; // reject pings with GPS accuracy worse than 100 metres
     const allPings = (data as RawPing[]).filter(p =>
       p.horizontal_accuracy == null || p.horizontal_accuracy <= MAX_ACCURACY_M
     );
-    const allClusters = clusterPings(allPings);
+    const smoothed = smoothPings(allPings);
+    const allClusters = clusterPings(smoothed);
     const selected = selectClusters(allClusters);
 
-    // 5b. Segment journeys between high-confidence visits
+    // 5b. Segment journeys between medium+ confidence visits
+    // Note: uses original (unsmoothed) pings so journey positions reflect actual GPS data
     const journeys = segmentJourneys(allPings, selected);
 
     console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length}) and ${journeys.length} journeys`);
@@ -725,6 +866,7 @@ serve(async (req) => {
             transport_proportions: j.transport_proportions,
             ping_count: j.ping_count,
             journey_duration_s: j.journey_duration_s,
+            journey_confidence: j.journey_confidence,
             started_at: j.started_at,
             ended_at: j.ended_at,
             confirmed_transport: null,
