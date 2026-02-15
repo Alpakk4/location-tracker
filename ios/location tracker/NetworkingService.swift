@@ -82,7 +82,8 @@ class NetworkingService {
            long: location.coordinate.longitude,
            home_lat: homeLat,
            home_long: homeLong,
-           motion: MotionType(motion: activity, confidence: confidence)))
+           motion: MotionType(motion: activity, confidence: confidence),
+           horizontal_accuracy: location.horizontalAccuracy))
         } catch {
             #if DEBUG
             print("json encoding failed", error)

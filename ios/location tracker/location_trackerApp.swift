@@ -20,6 +20,7 @@ struct RequestPayload: Codable {
     var home_lat: Double?
     var home_long: Double?
     var motion: MotionType
+    var horizontal_accuracy: Double
 }
 
 @main

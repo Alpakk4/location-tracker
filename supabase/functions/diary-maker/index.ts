@@ -10,6 +10,8 @@ import { createClient } from "supabase"
 interface PositionFromHome {
   distance: number; // metres from home
   bearing: number;  // degrees (0-360)
+  x_m?: number;     // east-west offset from home in metres (flat-earth)
+  y_m?: number;     // north-south offset from home in metres (flat-earth)
 }
 
 interface MotionType {
@@ -24,6 +26,7 @@ interface RawPing {
   other_types: string[];
   motion_type: MotionType;
   position_from_home: PositionFromHome;
+  horizontal_accuracy: number | null;
 }
 
 interface ClusterResult {
@@ -56,9 +59,17 @@ interface JourneyResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Distance between two points given as polar coords from a shared origin (home).
- *  Uses the law of cosines: d = sqrt(d1² + d2² - 2·d1·d2·cos(θ2-θ1))           */
+/** Distance between two points given as offsets from a shared origin (home).
+ *  Prefers numerically stable Euclidean distance on Cartesian (x_m, y_m) offsets.
+ *  Falls back to the law of cosines on polar coords for legacy pings. */
 function distanceBetween(a: PositionFromHome, b: PositionFromHome): number {
+  // Prefer Cartesian when both points have offsets
+  if (a.x_m != null && a.y_m != null && b.x_m != null && b.y_m != null) {
+    const dx = a.x_m - b.x_m;
+    const dy = a.y_m - b.y_m;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  // Fallback: law of cosines on polar coordinates
   const dθ = (b.bearing - a.bearing) * Math.PI / 180;
   const d2 = a.distance ** 2 + b.distance ** 2 -
              2 * a.distance * b.distance * Math.cos(dθ);
@@ -121,25 +132,60 @@ function durationSeconds(startISO: string, endISO: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Clustering
+// Clustering (centroid-anchored)
 // ---------------------------------------------------------------------------
+
+const CLUSTER_RADIUS_M = 75; // max distance from centroid to remain in cluster
+
+/** Compute the centroid of a set of pings' positions as an average PositionFromHome.
+ *  Averages Cartesian offsets (x_m, y_m) when available; falls back to polar averaging. */
+function clusterCentroid(pings: RawPing[]): PositionFromHome {
+  // Prefer Cartesian offsets for numerically stable averaging
+  if (pings[0].position_from_home.x_m != null && pings[0].position_from_home.y_m != null) {
+    let sx = 0, sy = 0;
+    for (const p of pings) {
+      sx += p.position_from_home.x_m!;
+      sy += p.position_from_home.y_m!;
+    }
+    const cx = sx / pings.length;
+    const cy = sy / pings.length;
+    const dist = Math.sqrt(cx * cx + cy * cy);
+    const bear = (Math.atan2(cx, cy) * 180 / Math.PI + 360) % 360;
+    return { distance: dist, bearing: bear, x_m: cx, y_m: cy };
+  }
+  // Fallback: convert polar to local Cartesian, average, convert back
+  let sx = 0, sy = 0;
+  for (const p of pings) {
+    const b = p.position_from_home.bearing * Math.PI / 180;
+    sx += p.position_from_home.distance * Math.sin(b);
+    sy += p.position_from_home.distance * Math.cos(b);
+  }
+  const cx = sx / pings.length;
+  const cy = sy / pings.length;
+  const dist = Math.sqrt(cx * cx + cy * cy);
+  const bear = (Math.atan2(cx, cy) * 180 / Math.PI + 360) % 360;
+  return { distance: dist, bearing: bear };
+}
 
 function clusterPings(pings: RawPing[]): ClusterResult[] {
   if (pings.length === 0) return [];
 
   const clusters: RawPing[][] = [];
   let current: RawPing[] = [pings[0]];
+  let centroid: PositionFromHome = pings[0].position_from_home;
 
   for (let i = 1; i < pings.length; i++) {
-    const prev = pings[i - 1];
     const curr = pings[i];
-    const dist = distanceBetween(prev.position_from_home, curr.position_from_home);
+    const dist = distanceBetween(centroid, curr.position_from_home);
 
-    if (dist <= 75) {
+    if (dist <= CLUSTER_RADIUS_M) {
       current.push(curr);
+      // Update running centroid to include the new ping
+      centroid = clusterCentroid(current);
     } else {
       clusters.push(current);
       current = [curr];
+      centroid = curr.position_from_home;
     }
   }
   clusters.push(current); // finalise last cluster
@@ -186,10 +232,21 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 }
 
 // ---------------------------------------------------------------------------
-// Selection: all high + up to 10 medium/low (guarantee ≥1 of each if available)
+// Selection: enforce minimum dwell time, then all high + up to 10 medium/low
 // ---------------------------------------------------------------------------
 
+/** Minimum seconds a cluster must span to qualify as a full visit.
+ *  Clusters shorter than this are capped at "low" confidence (transient stops). */
+const MIN_DWELL_SECONDS = 300; // 5 minutes
+
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
+  // Downgrade clusters that are too brief to be real visits
+  for (const c of clusters) {
+    if (c.cluster_duration_s < MIN_DWELL_SECONDS) {
+      c.visit_confidence = "low";
+    }
+  }
+
   const high   = clusters.filter(c => c.visit_confidence === "high");
   const medium = clusters.filter(c => c.visit_confidence === "medium");
   const low    = clusters.filter(c => c.visit_confidence === "low");
@@ -434,7 +491,8 @@ serve(async (req) => {
         primary_type,
         position_from_home,
         other_types,
-        motion_type
+        motion_type,
+        horizontal_accuracy
       `)
       .eq('deviceid', deviceId)
       .gte('created_at', `${date}T00:00:00Z`)
@@ -446,8 +504,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    // 5. Cluster, classify, and select
-    const allPings = data as RawPing[];
+    // 5. Filter out inaccurate pings, then cluster, classify, and select
+    const MAX_ACCURACY_M = 100; // reject pings with GPS accuracy worse than 100 metres
+    const allPings = (data as RawPing[]).filter(p =>
+      p.horizontal_accuracy == null || p.horizontal_accuracy <= MAX_ACCURACY_M
+    );
     const allClusters = clusterPings(allPings);
     const selected = selectClusters(allClusters);
 

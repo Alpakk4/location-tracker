@@ -29,9 +29,15 @@ function calculateDisplacement(lat1:number, lon1:number, lat2:number, lon2:numbe
             Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
   const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 
+  // Cartesian offsets from home (flat-earth projection, valid within ~50km)
+  const x_m = parseFloat((distance * Math.sin(bearing * Math.PI / 180)).toFixed(2)); // east-west offset in metres
+  const y_m = parseFloat((distance * Math.cos(bearing * Math.PI / 180)).toFixed(2)); // north-south offset in metres
+
   return { 
     distance: parseFloat(distance.toFixed(2)), 
-    bearing: parseFloat(bearing.toFixed(2)) 
+    bearing: parseFloat(bearing.toFixed(4)),
+    x_m,
+    y_m
   };
 };
 
@@ -55,7 +61,7 @@ async function idHasher(text:string) {
 console.info('server started');
 //DEFINE PING LOCATION FUNCTION
 Deno.serve(async (req) => {
-  const { uid, lat, long, home_lat, home_long,motion} = await req.json();
+  const { uid, lat, long, home_lat, home_long, motion, horizontal_accuracy } = await req.json();
   const MAPS_API = Deno.env.get("MAPS_API")!;
   console.info("ping request received", { uidPresent: Boolean(uid), hasHome: home_lat != null && home_long != null });
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
@@ -114,7 +120,8 @@ Deno.serve(async (req) => {
     other_types: firstPlace?.types ?? [], 
     // pass the placeid if it doesn't exist say unknown
     placeid: firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown",
-    position_from_home: displacement
+    position_from_home: displacement,
+    horizontal_accuracy: horizontal_accuracy ?? null
   };
   console.info("Saving resolved ping record");
   const db_res = await fetch(Deno.env.get("SUPABASE_URL") + "/rest/v1/locationsvisitednew", {
