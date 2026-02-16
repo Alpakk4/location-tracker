@@ -31,6 +31,7 @@
 - `DiarySubmitJourney`: user-confirmed journey answers.
 
 ## User Experience
+
 ```mermaid
 flowchart TD
     Start((Onboarding)) --> Consent[User Consents]
@@ -59,6 +60,7 @@ flowchart TD
     class DiaryGen,RedHerrings remote;
     class Validation,Interview action;
 ```
+
 ### Considerations
 
 ## Entity Relationships

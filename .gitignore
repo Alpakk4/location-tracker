@@ -26,3 +26,14 @@ Media.xcassets
 local_deno/
 #Data
 seed.sql
+#LaTeX
+latex/main.log
+latex/main.aux
+latex/main.out
+latex/main.toc
+latex/main.lof
+latex/main.lot
+latex/main.synctex.gz
+latex/main.fls
+latex/main.fdb_latexmk
+latex/main.blg
