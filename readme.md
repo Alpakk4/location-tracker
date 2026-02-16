@@ -30,6 +30,37 @@
 - `DiarySubmitEntry`: user-confirmed visit answers.
 - `DiarySubmitJourney`: user-confirmed journey answers.
 
+## User Experience
+```mermaid
+flowchart TD
+    Start((Onboarding)) --> Consent[User Consents]
+    Consent --> SetHome[Set Home Coordinates]
+    SetHome -.-> LocalData[(Local Storage)]
+    
+    SetHome --> ManualPing[Manual Pings]
+    SetHome --> PassivePing[Passive Telemetry]
+    
+    ManualPing --> DiaryGen{Diary Construction}
+    PassivePing --> DiaryGen
+    
+    DiaryGen --- RedHerrings[Inject Red Herrings]
+    
+    DiaryGen --> Validation[User Validation]
+    Validation --> Submit[Submit Diary]
+    
+    Submit --> Interview[Exit Interview]
+    Interview --> Analysis([Final Analysis])
+
+    classDef local fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    classDef remote fill:#cce5ff,stroke:#007bff,stroke-width:2px;
+    classDef action fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+    
+    class LocalData local;
+    class DiaryGen,RedHerrings remote;
+    class Validation,Interview action;
+```
+### Considerations
+
 ## Entity Relationships
 
 ```mermaid

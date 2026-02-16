@@ -646,6 +646,264 @@ function segmentJourneys(
 }
 
 // ---------------------------------------------------------------------------
+// Synthetic (red herring) visit/journey injection for sensitivity/specificity
+// ---------------------------------------------------------------------------
+
+/** Representative subset of Google Places Table A types across all 19 categories.
+ *  Used to generate synthetic visits with random place types. */
+const TABLE_A_PLACE_TYPES: string[] = [
+  // Automotive
+  "car_repair", "gas_station", "parking", "car_wash",
+  // Business
+  "corporate_office", "farm",
+  // Culture
+  "art_gallery", "museum", "performing_arts_theater", "monument",
+  // Education
+  "library", "school", "university", "primary_school",
+  // Entertainment and Recreation
+  "amusement_park", "bowling_alley", "community_center", "movie_theater",
+  "national_park", "park", "zoo", "night_club", "casino", "concert_hall",
+  // Facilities
+  "public_bathroom",
+  // Finance
+  "bank", "atm",
+  // Food and Drink
+  "restaurant", "cafe", "bakery", "bar", "coffee_shop", "fast_food_restaurant",
+  "ice_cream_shop", "pizza_restaurant", "sushi_restaurant", "steak_house",
+  "italian_restaurant", "chinese_restaurant", "mexican_restaurant",
+  // Geographical Areas
+  "locality",
+  // Government
+  "post_office", "courthouse", "city_hall", "police",
+  // Health and Wellness
+  "hospital", "pharmacy", "dentist", "doctor", "gym", "spa",
+  // Housing
+  "apartment_building", "apartment_complex",
+  // Lodging
+  "hotel", "hostel", "campground", "motel",
+  // Natural Features
+  "beach",
+  // Places of Worship
+  "church", "mosque", "synagogue",
+  // Services
+  "hair_salon", "laundry", "veterinary_care", "barber_shop", "beauty_salon",
+  // Shopping
+  "supermarket", "grocery_store", "clothing_store", "shopping_mall",
+  "convenience_store", "book_store", "electronics_store", "shoe_store",
+  // Sports
+  "fitness_center", "stadium", "swimming_pool", "golf_course",
+  // Transportation
+  "train_station", "bus_station", "airport", "subway_station",
+];
+
+/** Pick a random element from an array. */
+function randomChoice<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Pick a weighted random confidence level mimicking real visit distribution. */
+function randomVisitConfidence(): "high" | "medium" | "low" {
+  const r = Math.random();
+  if (r < 0.50) return "high";
+  if (r < 0.85) return "medium";
+  return "low";
+}
+
+/** Pick a weighted random transport mode. */
+function randomTransportMode(): string {
+  const r = Math.random();
+  if (r < 0.40) return "walking";
+  if (r < 0.80) return "automotive";
+  if (r < 0.95) return "cycling";
+  return "running";
+}
+
+interface TimeSlot {
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * Generate 1-3 synthetic red-herring visits placed in available time slots.
+ * Each visit uses either a reused place type from the day's real visits or a
+ * random Table A type. Synthetic IDs are prefixed with "syn_" for clarity.
+ */
+function generateSyntheticVisits(
+  realVisits: ClusterResult[],
+  date: string,
+): ClusterResult[] {
+  if (realVisits.length === 0) return [];
+
+  // Build available time slots: gaps between visits + before first / after last
+  const dayStartMs = new Date(`${date}T07:00:00Z`).getTime();
+  const dayEndMs   = new Date(`${date}T22:00:00Z`).getTime();
+
+  const sorted = [...realVisits].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+
+  const slots: TimeSlot[] = [];
+
+  // Before first visit
+  const firstStart = new Date(sorted[0].created_at).getTime();
+  if (firstStart - dayStartMs >= 600_000) {
+    slots.push({ startMs: dayStartMs, endMs: firstStart });
+  }
+
+  // Gaps between visits
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gapStart = new Date(sorted[i].ended_at).getTime();
+    const gapEnd   = new Date(sorted[i + 1].created_at).getTime();
+    if (gapEnd - gapStart >= 600_000) {
+      slots.push({ startMs: gapStart, endMs: gapEnd });
+    }
+  }
+
+  // After last visit
+  const lastEnd = new Date(sorted[sorted.length - 1].ended_at).getTime();
+  if (dayEndMs - lastEnd >= 600_000) {
+    slots.push({ startMs: lastEnd, endMs: dayEndMs });
+  }
+
+  if (slots.length === 0) return [];
+
+  const realPlaceTypes = sorted.map(v => v.primary_type).filter(Boolean);
+  const count = Math.min(1 + Math.floor(Math.random() * 3), slots.length); // 1-3, capped by slots
+
+  // Shuffle slots to pick randomly without replacement
+  const shuffledSlots = [...slots].sort(() => Math.random() - 0.5);
+
+  const synthetics: ClusterResult[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const slot = shuffledSlots[i];
+    const slotDurationMs = slot.endMs - slot.startMs;
+
+    // Visit duration: 5-60 minutes, capped at 70% of slot so there's room for travel
+    const maxDurationMs = Math.min(60 * 60_000, slotDurationMs * 0.7);
+    const minDurationMs = Math.min(5 * 60_000, maxDurationMs);
+    const visitDurationMs = minDurationMs + Math.random() * (maxDurationMs - minDurationMs);
+    const visitDurationS = Math.round(visitDurationMs / 1000);
+
+    // Place the visit randomly within the slot (leaving margins for travel)
+    const margin = (slotDurationMs - visitDurationMs) / 2;
+    const visitStartMs = slot.startMs + margin * (0.3 + Math.random() * 0.4);
+    const visitEndMs = visitStartMs + visitDurationMs;
+
+    // Choose place type: 50/50 reuse vs random
+    let primaryType: string;
+    if (realPlaceTypes.length > 0 && Math.random() < 0.5) {
+      primaryType = randomChoice(realPlaceTypes);
+    } else {
+      primaryType = randomChoice(TABLE_A_PLACE_TYPES);
+    }
+
+    const visitConfidence = randomVisitConfidence();
+
+    synthetics.push({
+      entryid: `syn_${crypto.randomUUID()}`,
+      entry_ids: [],
+      created_at: new Date(visitStartMs).toISOString(),
+      ended_at: new Date(visitEndMs).toISOString(),
+      cluster_duration_s: visitDurationS,
+      primary_type: primaryType,
+      other_types: [],
+      motion_type: { motion: "still", confidence: "medium" },
+      visit_confidence: visitConfidence,
+      visit_type: "visit",
+      ping_count: Math.max(2, Math.floor(visitDurationS / 300)),
+    });
+  }
+
+  return synthetics;
+}
+
+/**
+ * Generate synthetic journeys connecting synthetic visits to their chronological
+ * neighbors (real or synthetic). Each synthetic visit gets up to 2 journeys:
+ * one arriving from the previous visit and one departing to the next.
+ */
+function generateSyntheticJourneys(
+  allVisitsSorted: ClusterResult[],
+  syntheticVisits: ClusterResult[],
+): JourneyResult[] {
+  if (syntheticVisits.length === 0 || allVisitsSorted.length < 2) return [];
+
+  const syntheticIds = new Set(syntheticVisits.map(v => v.entryid));
+  const journeys: JourneyResult[] = [];
+
+  for (let i = 0; i < allVisitsSorted.length; i++) {
+    const visit = allVisitsSorted[i];
+    if (!syntheticIds.has(visit.entryid)) continue;
+
+    // Journey from previous visit to this synthetic visit
+    if (i > 0) {
+      const prev = allVisitsSorted[i - 1];
+      const gapStartMs = new Date(prev.ended_at).getTime();
+      const gapEndMs   = new Date(visit.created_at).getTime();
+      const gapS = Math.round((gapEndMs - gapStartMs) / 1000);
+
+      if (gapS > 0) {
+        const transport = randomTransportMode();
+        journeys.push({
+          journey_id: `syn_${crypto.randomUUID()}`,
+          entry_ids: [],
+          from_visit_id: prev.entryid,
+          to_visit_id: visit.entryid,
+          primary_transport: transport,
+          transport_proportions: { [transport]: 0.85, unknown: 0.15 },
+          started_at: prev.ended_at,
+          ended_at: visit.created_at,
+          journey_duration_s: gapS,
+          ping_count: Math.max(1, Math.floor(gapS / 180)),
+          journey_confidence: "medium",
+        });
+      }
+    }
+
+    // Journey from this synthetic visit to next visit
+    if (i < allVisitsSorted.length - 1) {
+      const next = allVisitsSorted[i + 1];
+      const gapStartMs = new Date(visit.ended_at).getTime();
+      const gapEndMs   = new Date(next.created_at).getTime();
+      const gapS = Math.round((gapEndMs - gapStartMs) / 1000);
+
+      if (gapS > 0) {
+        const transport = randomTransportMode();
+        journeys.push({
+          journey_id: `syn_${crypto.randomUUID()}`,
+          entry_ids: [],
+          from_visit_id: visit.entryid,
+          to_visit_id: next.entryid,
+          primary_transport: transport,
+          transport_proportions: { [transport]: 0.85, unknown: 0.15 },
+          started_at: visit.ended_at,
+          ended_at: next.created_at,
+          journey_duration_s: gapS,
+          ping_count: Math.max(1, Math.floor(gapS / 180)),
+          journey_confidence: "medium",
+        });
+      }
+    }
+  }
+
+  // Deduplicate: if two synthetic visits are adjacent, the departing journey of
+  // the first and the arriving journey of the second would cover the same gap.
+  // Keep only the first one encountered for each (from_visit_id, to_visit_id) pair.
+  const seen = new Set<string>();
+  const deduped: JourneyResult[] = [];
+  for (const j of journeys) {
+    const key = `${j.from_visit_id}|${j.to_visit_id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(j);
+    }
+  }
+
+  return deduped;
+}
+
+// ---------------------------------------------------------------------------
 // Edge Function
 // ---------------------------------------------------------------------------
 
@@ -750,7 +1008,20 @@ serve(async (req) => {
     // Note: uses original (unsmoothed) pings so journey positions reflect actual GPS data
     const journeys = segmentJourneys(allPings, selected);
 
-    console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length}) and ${journeys.length} journeys`);
+    // 5c. Generate synthetic red-herring visits and journeys for sensitivity/specificity analysis
+    const syntheticVisits = generateSyntheticVisits(selected, date);
+    const allVisits = [...selected, ...syntheticVisits]
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    const syntheticJourneys = generateSyntheticJourneys(allVisits, syntheticVisits);
+    const allJourneys = [...journeys, ...syntheticJourneys]
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+
+    // Track which IDs are synthetic for DB flagging (not exposed to iOS)
+    const syntheticVisitIds = new Set(syntheticVisits.map(v => v.entryid));
+    const syntheticJourneyIds = new Set(syntheticJourneys.map(j => j.journey_id));
+
+    console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length} real + ${syntheticVisits.length} synthetic) and ${journeys.length} real + ${syntheticJourneys.length} synthetic journeys`);
 
     // 6. Pre-populate normalized diary tables (diaries -> diary_visits -> diary_visit_entries)
 
@@ -782,8 +1053,8 @@ serve(async (req) => {
         (existingVisits ?? []).map((r: { visit_id: string }) => r.visit_id)
       );
 
-      // 6c. Insert new visit rows
-      const newClusters = selected.filter(c => !existingVisitIds.has(c.entryid));
+      // 6c. Insert new visit rows (real + synthetic)
+      const newClusters = allVisits.filter(c => !existingVisitIds.has(c.entryid));
 
       if (newClusters.length > 0) {
         const visitRows = newClusters.map(c => ({
@@ -798,6 +1069,7 @@ serve(async (req) => {
           cluster_duration_s: c.cluster_duration_s,
           started_at: c.created_at,
           ended_at: c.ended_at,
+          is_synthetic: syntheticVisitIds.has(c.entryid),
           activity_label: null,
           confirmed_place: null,
           confirmed_activity: null,
@@ -815,9 +1087,11 @@ serve(async (req) => {
           console.info(`Pre-populated ${insertedVisits.length} new visit rows`);
 
           // 6d. Insert diary_visit_entries linking visits to their constituent pings
+          // Skip synthetic visits — they have no real pings to link.
           const entryRows: { diary_visit_id: string; entry_id: string; position_in_cluster: number }[] = [];
 
           for (const iv of insertedVisits) {
+            if (syntheticVisitIds.has(iv.visit_id)) continue;
             const cluster = newClusters.find(c => c.entryid === iv.visit_id);
             if (cluster) {
               cluster.entry_ids.forEach((eid, idx) => {
@@ -843,8 +1117,8 @@ serve(async (req) => {
         }
       }
 
-      // 6e. Insert journey rows
-      if (journeys.length > 0) {
+      // 6e. Insert journey rows (real + synthetic)
+      if (allJourneys.length > 0) {
         const { data: existingJourneys } = await supabase
           .from('diary_journeys')
           .select('journey_id')
@@ -854,7 +1128,7 @@ serve(async (req) => {
           (existingJourneys ?? []).map((r: { journey_id: string }) => r.journey_id)
         );
 
-        const newJourneys = journeys.filter(j => !existingJourneyIds.has(j.journey_id));
+        const newJourneys = allJourneys.filter(j => !existingJourneyIds.has(j.journey_id));
 
         if (newJourneys.length > 0) {
           const journeyRows = newJourneys.map(j => ({
@@ -869,6 +1143,7 @@ serve(async (req) => {
             journey_confidence: j.journey_confidence,
             started_at: j.started_at,
             ended_at: j.ended_at,
+            is_synthetic: syntheticJourneyIds.has(j.journey_id),
             confirmed_transport: null,
             travel_reason: null,
           }));
@@ -884,9 +1159,11 @@ serve(async (req) => {
             console.info(`Pre-populated ${insertedJourneys.length} new journey rows`);
 
             // 6f. Insert diary_journey_entries linking journeys to their pings
+            // Skip synthetic journeys — they have no real pings to link.
             const journeyEntryRows: { diary_journey_id: string; entry_id: string; position_in_journey: number }[] = [];
 
             for (const ij of insertedJourneys) {
+              if (syntheticJourneyIds.has(ij.journey_id)) continue;
               const journey = newJourneys.find(j => j.journey_id === ij.journey_id);
               if (journey) {
                 journey.entry_ids.forEach((eid, idx) => {
@@ -914,8 +1191,9 @@ serve(async (req) => {
       }
     }
 
-    // 7. Return selected visits and journeys to iOS
-    return new Response(JSON.stringify({ visits: selected, journeys }), {
+    // 7. Return all visits and journeys (real + synthetic) to iOS
+    // Note: is_synthetic flag is only in the DB, not in these response objects
+    return new Response(JSON.stringify({ visits: allVisits, journeys: allJourneys }), {
       status: 200,
       headers: { 
         "Content-Type": "application/json",
