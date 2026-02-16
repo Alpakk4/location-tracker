@@ -82,6 +82,8 @@ Deno.serve(async (req) => {
   const displacement = (home_lat != null && home_long != null)
     ? calculateDisplacement(home_lat, home_long, lat, long)
     : null;
+  // Check if the ping is at home location, or within 30 metres
+  const isAtHome = displacement != null && displacement.distance <= 30; // 30 metres
 
   console.info("Fetching nearby places");
   const maps_res = await fetch(maps_base, {
@@ -115,7 +117,7 @@ Deno.serve(async (req) => {
     deviceid: uid,
     motion_type: motion,
     closest_place: firstPlace?.displayName?.text ?? "Unknown",
-    primary_type: firstPlace?.primaryType ?? "Unknown",
+    primary_type: isAtHome ? "Home" : (firstPlace?.primaryType ?? "Unknown"),
     // Pass the array directly. If it doesn't exist, send an empty array []
     other_types: firstPlace?.types ?? [], 
     // pass the placeid if it doesn't exist say unknown
