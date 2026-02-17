@@ -45,15 +45,14 @@ enum SecureStore {
             kSecAttrAccount as String: key.rawValue
         ]
 
+        // Delete existing item first (if it exists) to ensure new accessibility attribute is applied
+        // This is necessary because SecItemUpdate cannot change kSecAttrAccessible attribute
+        _ = SecItemDelete(query as CFDictionary)
+
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess {
-            return true
-        }
 
         var createQuery = query
         createQuery.merge(attributes) { _, new in new }
