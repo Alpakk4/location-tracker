@@ -102,19 +102,37 @@ function pairConfidence(dist: number, prevMotion: MotionType, currMotion: Motion
   }
 }
 
-/** Return the most common element in an array (mode). Falls back to first element. */
+/** Return the most common element in an array (mode).
+ * 
+ *  Finds the element that appears most frequently. In case of ties, returns
+ *  the first element encountered with the maximum count. If the array is empty,
+ *  throws an error (callers should ensure non-empty arrays).
+ * 
+ *  Optimized to a single pass through the array.
+ */
 function mode<T>(arr: T[]): T {
+  if (arr.length === 0) {
+    throw new Error("mode() called with empty array");
+  }
+
   const counts = new Map<string, number>();
+  let best: T = arr[0];
+  let bestCount = 0;
+
+  // Single pass: count occurrences and track the mode simultaneously
   for (const v of arr) {
     const key = String(v);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const count = (counts.get(key) ?? 0) + 1;
+    counts.set(key, count);
+
+    // Update best if this element has a higher count
+    // In case of ties, keep the first encountered (bestCount check uses > not >=)
+    if (count > bestCount) {
+      bestCount = count;
+      best = v;
+    }
   }
-  let best = arr[0];
-  let bestCount = 0;
-  for (const v of arr) {
-    const c = counts.get(String(v))!;
-    if (c > bestCount) { bestCount = c; best = v; }
-  }
+
   return best;
 }
 
