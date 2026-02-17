@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
           latitude: lat, // centred on lat and long
           longitude: long
         },
-        radius: 25.0 //search radius in metres
+        radius: 30.0 //search radius in metres
       }
     }
   };
