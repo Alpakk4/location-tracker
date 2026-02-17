@@ -66,15 +66,15 @@ Deno.serve(async (req) => {
   console.info("ping request received", { uidPresent: Boolean(uid), hasHome: home_lat != null && home_long != null });
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
   const maps_body = {
-    maxResultCount: 1,
+    maxResultCount: 5, //max number of places to return
     rankPreference: "POPULARITY",
     locationRestriction: {
-      circle: {
+      circle: { //circle search
         center: {
-          latitude: lat,
+          latitude: lat, // centred on lat and long
           longitude: long
         },
-        radius: 50.0
+        radius: 25.0 //search radius in metres
       }
     }
   };
@@ -108,6 +108,11 @@ Deno.serve(async (req) => {
   // Write location to database
   // 1. Grab the first place object safely
   const firstPlace = maps_data.places?.[0];
+  // 2. Grab the other primary type places objects safely
+  const possible_primary_types = maps_data.places
+  ?.slice(1) // Skips the first element (index 0)
+  .map(place => place.primaryType) // Grabs the type from the remaining objects
+  ?? []; // Fallback to an empty array if 'places' is null/undefined
 
     // 2. Build the body using the array directly
   const db_body = {
@@ -120,6 +125,7 @@ Deno.serve(async (req) => {
     primary_type: isAtHome ? "Home" : (firstPlace?.primaryType ?? "Unknown"),
     // Pass the array directly. If it doesn't exist, send an empty array []
     other_types: firstPlace?.types ?? [], 
+    possible_primary_types: possible_primary_types,
     // pass the placeid if it doesn't exist say unknown
     placeid: firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown",
     position_from_home: displacement,
