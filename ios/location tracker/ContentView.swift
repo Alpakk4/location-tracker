@@ -10,11 +10,22 @@ struct ContentView: View {
     let defaults = UserDefaults.standard
     
     // --- Configuration State ---
-    @State private var enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
+    @State private var enableReporting: Bool = {
+        // Default to true if key doesn't exist
+        if UserDefaults.standard.object(forKey: ConfigurationKeys.enableReporting) == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
+    }()
     @State private var uid = SecureStore.getString(for: .uid)
         ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
         ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
         ?? ""
+    
+    // --- Pause Timer State ---
+    @State private var isPaused: Bool = false
+    @State private var pauseEndTime: Date?
+    @State private var pauseTask: Task<Void, Never>?
     
     // --- Home Location State ---
     @State private var homeLat: Double? = SecureStore.getDouble(for: .homeLatitude)
@@ -46,8 +57,12 @@ struct ContentView: View {
         isRefreshingFromDefaults = true
         defer { isRefreshingFromDefaults = false }
         
-        // Refresh enableReporting
-        enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
+        // Refresh enableReporting (default to true if not set)
+        if UserDefaults.standard.object(forKey: ConfigurationKeys.enableReporting) == nil {
+            enableReporting = true
+        } else {
+            enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
+        }
         
         // Refresh uid
         let refreshedUid = SecureStore.getString(for: .uid)
@@ -65,6 +80,114 @@ struct ContentView: View {
         
         // Refresh uid lock state
         isUidLocked = !refreshedUid.isEmpty
+    }
+    
+    // MARK: - Pause Timer Functions
+    private func startPauseTimer() {
+        // Cancel any existing task
+        pauseTask?.cancel()
+        
+        // Set pause end time to 25 minutes from now
+        let endTime = Date().addingTimeInterval(25 * 60) // 25 minutes = 1500 seconds
+        pauseEndTime = endTime
+        
+        // Store pause end time in UserDefaults for persistence
+        defaults.set(endTime, forKey: ConfigurationKeys.pauseEndTime)
+        
+        // Set paused state
+        isPaused = true
+        
+        // Stop location services
+        loc.stop()
+        
+        // Create async task to auto-resume after 25 minutes
+        pauseTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(25 * 60 * 1_000_000_000))
+                // Check if task was cancelled
+                if !Task.isCancelled {
+                    cancelPause()
+                }
+            } catch {
+                // Task was cancelled, do nothing
+            }
+        }
+        
+        #if DEBUG
+        print("Started 25-minute pause timer, will resume at \(endTime)")
+        #endif
+    }
+    
+    private func cancelPause() {
+        // Cancel task
+        pauseTask?.cancel()
+        pauseTask = nil
+        
+        // Clear pause state
+        isPaused = false
+        pauseEndTime = nil
+        
+        // Clear stored pause end time
+        defaults.removeObject(forKey: ConfigurationKeys.pauseEndTime)
+        
+        // Resume location services (onChange will handle loc.start() when enableReporting is set)
+        enableReporting = true
+        defaults.set(true, forKey: ConfigurationKeys.enableReporting)
+        
+        #if DEBUG
+        print("Pause cancelled, location services resumed")
+        #endif
+    }
+    
+    private func restorePauseIfNeeded() {
+        // Check if there's a stored pause end time
+        if let storedEndTime = defaults.object(forKey: ConfigurationKeys.pauseEndTime) as? Date {
+            let now = Date()
+            if storedEndTime > now {
+                // Pause is still active, restore it
+                pauseEndTime = storedEndTime
+                isPaused = true
+                
+                // Ensure enableReporting reflects paused state
+                enableReporting = false
+                
+                // Calculate remaining time
+                let remainingTime = storedEndTime.timeIntervalSince(now)
+                
+                // Create async task for remaining time
+                pauseTask = Task { @MainActor in
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+                        // Check if task was cancelled
+                        if !Task.isCancelled {
+                            cancelPause()
+                        }
+                    } catch {
+                        // Task was cancelled, do nothing
+                    }
+                }
+                
+                // Ensure location services are stopped
+                loc.stop()
+                
+                #if DEBUG
+                print("Restored pause timer, will resume in \(remainingTime) seconds")
+                #endif
+            } else {
+                // Pause time has passed, clear it
+                defaults.removeObject(forKey: ConfigurationKeys.pauseEndTime)
+                isPaused = false
+                pauseEndTime = nil
+                
+                // Ensure location services are running
+                enableReporting = true
+                defaults.set(true, forKey: ConfigurationKeys.enableReporting)
+                
+                #if DEBUG
+                print("Pause time expired, location services resumed")
+                #endif
+            }
+        }
     }
 
     var body: some View {
@@ -130,21 +253,47 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 15) {
                     Toggle(isOn: $enableReporting) {
-                        Label("Location Sharing is \(enableReporting ? "ON" : "OFF")", systemImage: "timer")
+                        Label("Location Sharing is \(isPaused ? "PAUSED" : (enableReporting ? "ON" : "OFF"))", systemImage: "timer")
                             .font(.headline)
                     }
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(10)
+                    .disabled(isPaused)
+                    .opacity(isPaused ? 0.6 : 1.0)
                     .onChange(of: enableReporting) {
                         guard !isRefreshingFromDefaults else { return }
                         if enableReporting {
-                            loc.start()
-                            defaults.set(true, forKey: ConfigurationKeys.enableReporting)
+                            // User wants to resume - cancel any active pause
+                            if isPaused {
+                                cancelPause()
+                            } else {
+                                loc.start()
+                                defaults.set(true, forKey: ConfigurationKeys.enableReporting)
+                            }
                         } else {
-                            loc.stop()
+                            // User wants to pause - start 25-minute pause timer
+                            startPauseTimer()
                             defaults.set(false, forKey: ConfigurationKeys.enableReporting)
                         }
+                    }
+                    
+                    // Show cancel pause button when paused
+                    if isPaused {
+                        Button(action: {
+                            cancelPause()
+                        }) {
+                            HStack {
+                                Image(systemName: "play.fill")
+                                Text("Resume Now")
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .padding(.top, -10)
                     }
                     
                     VStack(spacing: 0) {
@@ -260,11 +409,30 @@ struct ContentView: View {
                 defaults.removeObject(forKey: ConfigurationKeys.legacyUid)
             }
             NetworkingService.shared.uid = uid.isEmpty ? nil : uid
-            if enableReporting {
+            
+            // Restore pause state if needed (checks stored pause end time)
+            restorePauseIfNeeded()
+            
+            // Start or stop location services based on state
+            if enableReporting && !isPaused {
                 loc.start()
             } else {
                 loc.stop()
             }
+            
+            // If enableReporting key wasn't set, default to ON and start
+            if defaults.object(forKey: ConfigurationKeys.enableReporting) == nil {
+                enableReporting = true
+                defaults.set(true, forKey: ConfigurationKeys.enableReporting)
+                if !isPaused {
+                    loc.start()
+                }
+            }
+        }
+        .onDisappear {
+            // Clean up task when view disappears
+            pauseTask?.cancel()
+            pauseTask = nil
         }
         .alert("Set Home Location?", isPresented: $showingSetHomeAlert) {
             Button("Cancel", role: .cancel) { }

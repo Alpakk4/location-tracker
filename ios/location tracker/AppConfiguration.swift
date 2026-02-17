@@ -9,6 +9,7 @@ struct ConfigurationKeys {
     static let enableReporting = "enableReporting"
     static let isHomeSet = "is_home_set"
     static let legacyUid = "unspecified_ios_device"
+    static let pauseEndTime = "pauseEndTime"
 }
 
 struct ConfigurationDefaults {
