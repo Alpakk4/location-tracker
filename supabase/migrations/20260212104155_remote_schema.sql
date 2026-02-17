@@ -1,2 +1,0 @@
--- Intentionally empty: original content referenced internal Supabase
--- storage functions that do not exist in the local/shadow database.
