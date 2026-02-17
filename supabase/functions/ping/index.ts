@@ -90,8 +90,8 @@ Deno.serve(async (req) => {
     body: JSON.stringify(maps_body),
     headers: {
       "X-Goog-Api-Key": MAPS_API,
-      // Requesting displayName, primaryType, types, and the unique ID
-      "X-Goog-FieldMask": "places.displayName,places.primaryType,places.types,places.id",
+      // Requesting displayName, primaryType, types, the unique ID, and location
+      "X-Goog-FieldMask": "places.displayName,places.primaryType,places.types,places.id,places.location",
       "Content-Type": "application/json"
     },
     method: "POST"
@@ -108,11 +108,36 @@ Deno.serve(async (req) => {
   // Write location to database
   // 1. Grab the first place object safely
   const firstPlace = maps_data.places?.[0];
-  // 2. Grab the other primary type places objects safely
-  const possible_primary_types = maps_data.places
-  ?.slice(1) // Skips the first element (index 0)
-  .map(place => place.primaryType) // Grabs the type from the remaining objects
-  ?? []; // Fallback to an empty array if 'places' is null/undefined
+  
+  // Calculate distance to primary place
+  let primary_place_distance: number | null = null;
+  if (firstPlace?.location?.latitude != null && firstPlace?.location?.longitude != null) {
+    const displacement = calculateDisplacement(
+      lat,
+      long,
+      firstPlace.location.latitude,
+      firstPlace.location.longitude
+    );
+    primary_place_distance = displacement.distance;
+  }
+  
+  // 2. Grab the other primary type places objects safely and calculate distances
+  const possible_places = maps_data.places?.slice(1) ?? []; // Skips the first element (index 0)
+  const possible_primary_types = possible_places.map(place => place.primaryType);
+  const possible_places_distances = possible_places
+    .map(place => {
+      if (place.location?.latitude != null && place.location?.longitude != null) {
+        const displacement = calculateDisplacement(
+          lat,
+          long,
+          place.location.latitude,
+          place.location.longitude
+        );
+        return displacement.distance;
+      }
+      return null;
+    })
+    .filter((distance): distance is number => distance !== null);
 
     // 2. Build the body using the array directly
   const db_body = {
@@ -129,7 +154,9 @@ Deno.serve(async (req) => {
     // pass the placeid if it doesn't exist say unknown
     placeid: firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown",
     position_from_home: displacement,
-    horizontal_accuracy: horizontal_accuracy ?? null
+    horizontal_accuracy: horizontal_accuracy ?? null,
+    distance_user_to_place: primary_place_distance,
+    possible_places_distances: possible_places_distances
   };
   console.info("Saving resolved ping record");
   const db_res = await fetch(Deno.env.get("SUPABASE_URL") + "/rest/v1/locationsvisitednew", {
