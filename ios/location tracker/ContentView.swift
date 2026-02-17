@@ -37,6 +37,35 @@ struct ContentView: View {
     // --- Wobble State ---
     @State private var homeWobble = false
     @State private var uidWobble = false
+    
+    // --- Refresh State ---
+    @State private var isRefreshingFromDefaults = false
+    
+    // MARK: - Refresh Function
+    private func refreshFromUserDefaults() {
+        isRefreshingFromDefaults = true
+        defer { isRefreshingFromDefaults = false }
+        
+        // Refresh enableReporting
+        enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
+        
+        // Refresh uid
+        let refreshedUid = SecureStore.getString(for: .uid)
+            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
+            ?? ""
+        if refreshedUid != uid {
+            uid = refreshedUid
+        }
+        
+        // Refresh home location
+        homeLat = SecureStore.getDouble(for: .homeLatitude)
+        homeLong = SecureStore.getDouble(for: .homeLongitude)
+        isHomeSet = UserDefaults.standard.bool(forKey: ConfigurationKeys.isHomeSet)
+        
+        // Refresh uid lock state
+        isUidLocked = !refreshedUid.isEmpty
+    }
 
     var body: some View {
         mainAppContent
@@ -108,6 +137,7 @@ struct ContentView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(10)
                     .onChange(of: enableReporting) {
+                        guard !isRefreshingFromDefaults else { return }
                         if enableReporting {
                             loc.start()
                             defaults.set(true, forKey: ConfigurationKeys.enableReporting)
@@ -129,6 +159,7 @@ struct ContentView: View {
                             } else {
                                 TextField("Device ID", text: $uid)
                                     .onChange(of: uid) {
+                                        guard !isRefreshingFromDefaults else { return }
                                         NetworkingService.shared.uid = uid
                                         defaults.set(uid, forKey: ConfigurationKeys.uid)
                                         if uid.isEmpty {
@@ -217,6 +248,9 @@ struct ContentView: View {
         }
         .padding()
         .onAppear {
+            // Refresh all state from User Defaults first
+            refreshFromUserDefaults()
+            
             // Keep reporting behavior consistent across cold launch and toggle changes.
             if let legacyUid = defaults.string(forKey: ConfigurationKeys.legacyUid),
                defaults.string(forKey: ConfigurationKeys.uid) == nil {
