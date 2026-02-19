@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     deviceid: uid,
     motion_type: motion,
     closest_place: firstPlace?.displayName?.text ?? "Unknown",
-    primary_type: isAtHome ? "Home" : (firstPlace?.primaryType ?? "Unknown"),
+    primary_type: isAtHome ? "home" : (firstPlace?.primaryType ?? "Unknown"),
     // Pass the array directly. If it doesn't exist, send an empty array []
     other_types: firstPlace?.types ?? [], 
     possible_primary_types: possible_primary_types,
