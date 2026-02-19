@@ -49,9 +49,13 @@ enum SecureStore {
         // This is necessary because SecItemUpdate cannot change kSecAttrAccessible attribute
         _ = SecItemDelete(query as CFDictionary)
 
+        // Home coordinates: readable when device locked (e.g. background pings). Others: when unlocked only.
+        let accessible: CFString = (key == .homeLatitude || key == .homeLongitude)
+            ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            : kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessible as String: accessible
         ]
 
         var createQuery = query

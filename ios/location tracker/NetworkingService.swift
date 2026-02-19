@@ -8,6 +8,7 @@ import CoreLocation
 class NetworkingService {
     static let shared = NetworkingService()
     private var last: Date?
+    private let throttleQueue = DispatchQueue(label: "NetworkingService.throttle")
     private let defaults = UserDefaults.standard
     private let manager = CLLocationManager()
     
@@ -40,59 +41,62 @@ class NetworkingService {
         guard status == .authorizedAlways || status == .authorizedWhenInUse else {
             return
         }
-        #if DEBUG
-        print("sending location. Activity State \(activity) (\(confidence))\(force ? " [FORCED]" : "")")
-        #endif
-        
-        if !force {
-            let interval: TimeInterval = {
-                switch activity {
-                case "WALKING":    return 120  // 2 mins
-                case "CYCLING":    return 420  // 7 mins
-                case "AUTOMOTIVE": return 600  // 10 mins
-                case "STILL":      return 1800 // 30 mins
-                default:           return 300  // 5 mins default
-                }
-            }()
-            
-            if let l: Date = last {
-                if (l + interval) > Date.now {
-                    #if DEBUG
-                    print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
-                    #endif
-                    return
+
+        throttleQueue.async { [weak self] in
+            guard let self = self else { return }
+            #if DEBUG
+            print("sending location. Activity State \(activity) (\(confidence))\(force ? " [FORCED]" : "")")
+            #endif
+
+            if !force {
+                let interval: TimeInterval = {
+                    switch activity {
+                    case "WALKING":    return 120  // 2 mins
+                    case "CYCLING":    return 420  // 7 mins
+                    case "AUTOMOTIVE": return 600  // 10 mins
+                    case "STILL":      return 1800 // 30 mins
+                    default:           return 300  // 5 mins default
+                    }
+                }()
+
+                if let l: Date = self.last {
+                    if (l + interval) > Date.now {
+                        #if DEBUG
+                        print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
+                        #endif
+                        return
+                    }
                 }
             }
-        }
-        last = Date.now
+            self.last = Date.now
 
-        guard let url = endpointURL(path: "ping") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer "+Environment.apikey, forHTTPHeaderField: "Authorization")
-        req.setValue(Environment.apikey, forHTTPHeaderField: "apikey")
-        let isHomeSet = defaults.bool(forKey: ConfigurationKeys.isHomeSet)
-        let homeLat = isHomeSet ? SecureStore.getDouble(for: .homeLatitude) : nil
-        let homeLong = isHomeSet ? SecureStore.getDouble(for: .homeLongitude) : nil
+            guard let url = self.endpointURL(path: "ping") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue("Bearer "+Environment.apikey, forHTTPHeaderField: "Authorization")
+            req.setValue(Environment.apikey, forHTTPHeaderField: "apikey")
+            let isHomeSet = self.defaults.bool(forKey: ConfigurationKeys.isHomeSet)
+            let homeLat = isHomeSet ? SecureStore.getDouble(for: .homeLatitude) : nil
+            let homeLong = isHomeSet ? SecureStore.getDouble(for: .homeLongitude) : nil
 
-        do {
-            req.httpBody = try JSONEncoder().encode(RequestPayload(uid: uid ?? ConfigurationDefaults.anonymousUid,
-           lat: location.coordinate.latitude,
-           long: location.coordinate.longitude,
-           home_lat: homeLat,
-           home_long: homeLong,
-           motion: MotionType(motion: activity, confidence: confidence),
-           horizontal_accuracy: location.horizontalAccuracy))
-        } catch {
-            #if DEBUG
-            print("json encoding failed", error)
-            #endif
-            return
+            do {
+                req.httpBody = try JSONEncoder().encode(RequestPayload(uid: self.uid ?? ConfigurationDefaults.anonymousUid,
+                   lat: location.coordinate.latitude,
+                   long: location.coordinate.longitude,
+                   home_lat: homeLat,
+                   home_long: homeLong,
+                   motion: MotionType(motion: activity, confidence: confidence),
+                   horizontal_accuracy: location.horizontalAccuracy))
+            } catch {
+                #if DEBUG
+                print("json encoding failed", error)
+                #endif
+                return
+            }
+
+            self.send(req, retriesRemaining: 1)
         }
-        
-        
-        send(req, retriesRemaining: 1)
     }
 
     private func endpointURL(path: String) -> URL? {
