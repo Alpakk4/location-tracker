@@ -33,7 +33,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = true
         // Limit callback frequency so capture is useful without excessive upload churn.
-        manager.distanceFilter = 10
+        manager.distanceFilter = 30
         // Keep high accuracy because diary clustering benefits from precise coordinates.
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }

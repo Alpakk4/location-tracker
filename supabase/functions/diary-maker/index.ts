@@ -297,7 +297,7 @@ function smoothPings(pings: RawPing[]): RawPing[] {
 // Clustering (centroid-anchored)
 // ---------------------------------------------------------------------------
 
-const CLUSTER_RADIUS_M = 75; // max distance from centroid to remain in cluster
+const CLUSTER_RADIUS_M = 50; // max distance from centroid to remain in cluster
 
 /** Compute the centroid of a set of pings' positions as an average PositionFromHome.
  *  Averages Cartesian offsets (x_m, y_m) when available; falls back to polar averaging. */

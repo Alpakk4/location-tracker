@@ -67,14 +67,14 @@ Deno.serve(async (req) => {
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
   const maps_body = {
     maxResultCount: 5, //max number of places to return
-    rankPreference: "POPULARITY",
+    rankPreference: "DISTANCE",
     locationRestriction: {
       circle: { //circle search
         center: {
           latitude: lat, // centred on lat and long
           longitude: long
         },
-        radius: 30.0 //search radius in metres
+        radius: 50.0 //search radius in metres
       }
     }
   };
