@@ -25,6 +25,12 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private static let geofenceIdentifier = "current-visit"
     /// Tracks whether the previous motion update was STILL, to detect transitions.
     private var wasStationary = false
+    
+    // MARK: - Motion debouncing properties
+    private var debounceTimer: Timer?
+    private var pendingMotion: String?
+    private var pendingConfidence: String?
+    private let debounceInterval: TimeInterval = 5.0
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -66,10 +72,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         activityManager.startActivityUpdates(to: .main) { [weak self] activity in
             guard let self = self, let activity = activity else { return }
             let newMotion = self.mapActivity(activity)
-            self.currentMotion = newMotion
-            self.currentConfidence = self.mapConfidence(activity.confidence)
+            let newConfidence = self.mapConfidence(activity.confidence)
 
             // Geofence lifecycle: register when becoming STILL, tear down when leaving STILL.
+            // Use raw motion value (not debounced) for responsive geofence management.
             let isNowStationary = (newMotion == "STILL")
             if isNowStationary && !self.wasStationary {
                 // Transition into STILL — register a geofence at current location
@@ -82,9 +88,45 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
             self.wasStationary = isNowStationary
 
-            #if DEBUG
-            print("Activity updated: \(self.currentMotion) (\(self.currentConfidence))")
-            #endif
+            // Debounce motion status updates for smooth UI and reduced networking churn.
+            // Allow immediate update on first state (when still in initial state).
+            let isInitialState = (self.currentMotion == "STILL" && self.currentConfidence == "unknown")
+            
+            if isInitialState {
+                // First update: apply immediately without debouncing
+                DispatchQueue.main.async {
+                    self.currentMotion = newMotion
+                    self.currentConfidence = newConfidence
+                }
+                #if DEBUG
+                print("Activity updated (initial): \(newMotion) (\(newConfidence))")
+                #endif
+            } else {
+                // Subsequent updates: debounce
+                self.pendingMotion = newMotion
+                self.pendingConfidence = newConfidence
+                
+                // Cancel existing timer
+                self.debounceTimer?.invalidate()
+                
+                // Create new timer on main queue
+                DispatchQueue.main.async {
+                    self.debounceTimer = Timer.scheduledTimer(withTimeInterval: self.debounceInterval, repeats: false) { [weak self] _ in
+                        guard let self = self,
+                              let motion = self.pendingMotion,
+                              let confidence = self.pendingConfidence else { return }
+                        
+                        self.currentMotion = motion
+                        self.currentConfidence = confidence
+                        self.pendingMotion = nil
+                        self.pendingConfidence = nil
+                        
+                        #if DEBUG
+                        print("Activity updated (debounced): \(motion) (\(confidence))")
+                        #endif
+                    }
+                }
+            }
         }
     }
 
@@ -96,6 +138,18 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.stopUpdatingLocation()
         activityManager.stopActivityUpdates()
         tearDownGeofence()
+        
+        // Cancel debounce timer and apply any pending updates
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        if let pendingMotion = pendingMotion, let pendingConfidence = pendingConfidence {
+            DispatchQueue.main.async {
+                self.currentMotion = pendingMotion
+                self.currentConfidence = pendingConfidence
+                self.pendingMotion = nil
+                self.pendingConfidence = nil
+            }
+        }
     }
 
     // MARK: - Geofence (visit boundary detection)
