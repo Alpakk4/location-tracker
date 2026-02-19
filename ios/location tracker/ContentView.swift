@@ -497,23 +497,40 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Onboarding View
-struct OnboardingView: View {
+// MARK: - Onboarding
+
+enum OnboardingStep {
+    case location
+    case motion
+}
+
+struct OnboardingFlowView: View {
     @EnvironmentObject var loc: LocationService
     @Binding var hasCompletedOnboarding: Bool
+    @State private var step: OnboardingStep = .location
 
     var body: some View {
+        switch step {
+        case .location:
+            locationStep
+        case .motion:
+            motionStep
+        }
+    }
+
+    // Step 1: Location permission — advance to motion when authorized.
+    private var locationStep: some View {
         VStack(spacing: 30) {
             Spacer()
-            
+
             Image(systemName: "location.circle.fill")
                 .resizable()
                 .frame(width: 80, height: 80)
                 .foregroundColor(.blue)
-            
+
             Text("Enable Background Tracking")
                 .font(.title).bold()
-            
+
             Text("This app maps your activity diary. To work correctly, it needs access to your location even when the app is closed.")
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -531,7 +548,7 @@ struct OnboardingView: View {
             }
             .font(.subheadline)
             .padding(.horizontal)
-            
+
             Spacer()
 
             Button(action: {
@@ -550,7 +567,67 @@ struct OnboardingView: View {
         }
         .onChange(of: loc.authorizationStatus) {
             if loc.authorizationStatus == .authorizedAlways || loc.authorizationStatus == .authorizedWhenInUse {
-                hasCompletedOnboarding = true
+                step = .motion
+            }
+        }
+    }
+
+    // Step 2: Motion permission — set hasCompletedOnboarding when done (or Continue if unavailable).
+    private var motionStep: some View {
+        VStack(spacing: 30) {
+            Spacer()
+
+            Image(systemName: "figure.walk")
+                .resizable()
+                .frame(width: 80, height: 80)
+                .foregroundColor(.blue)
+
+            Text("Enable Activity Detection")
+                .font(.title).bold()
+
+            if loc.isMotionAvailable {
+                Text("Knowing whether you're walking, driving, or still helps build a better activity diary. Allow access when prompted.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Activity detection is not available on this device.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            if loc.isMotionAvailable {
+                Button(action: {
+                    loc.start()
+                    hasCompletedOnboarding = true
+                }) {
+                    Text("Enable Motion & Fitness")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
+            } else {
+                Button(action: {
+                    hasCompletedOnboarding = true
+                }) {
+                    Text("Continue")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
             }
         }
     }

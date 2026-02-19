@@ -38,6 +38,9 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
+    /// Whether motion and fitness (activity) detection is available on this device (e.g. false in simulator).
+    var isMotionAvailable: Bool { CMMotionActivityManager.isActivityAvailable() }
+
     /// Requests always-on permission because tracking can continue in background.
     func requestAuth() {
         #if DEBUG

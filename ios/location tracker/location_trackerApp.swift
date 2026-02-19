@@ -56,7 +56,7 @@ struct MainTabView: View {
                     }
             }
         } else {
-            OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+            OnboardingFlowView(hasCompletedOnboarding: $hasCompletedOnboarding)
         }
     }
 }
