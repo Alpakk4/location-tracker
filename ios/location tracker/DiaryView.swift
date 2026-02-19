@@ -92,6 +92,16 @@ struct DiaryView: View {
                         .tint(.indigo)
                         .disabled(diaryService.isLoading)
 
+                        #if DEBUG
+                        Button("Today (Debug)") {
+                            isSelectingAnotherDate = false
+                            buildDiary(for: Date())
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                        .disabled(diaryService.isLoading)
+                        #endif
+
                         Button("Another date") {
                             isSelectingAnotherDate.toggle()
                         }
