@@ -35,6 +35,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var pendingConfidence: String?
     private let debounceInterval: TimeInterval = 5.0
 
+    /// When STILL, force a ping every 30 minutes using last location even if no location update occurred.
+    private let stillHeartbeatInterval: TimeInterval = 1800 // 30 min
+    private var stillHeartbeatTimer: Timer?
+
     override init() {
         authorizationStatus = manager.authorizationStatus
         super.init()
@@ -102,6 +106,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
                 DispatchQueue.main.async {
                     self.currentMotion = newMotion
                     self.currentConfidence = newConfidence
+                    if newMotion == "STILL" {
+                        self.startStillHeartbeatTimer()
+                    } else {
+                        self.stopStillHeartbeatTimer()
+                    }
                 }
                 #if DEBUG
                 print("Activity updated (initial): \(newMotion) (\(newConfidence))")
@@ -129,7 +138,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
                         if let loc = self.lastLocation {
                             NetworkingService.shared.sendLocation(loc, activity: motion, confidence: confidence, force: true)
                         }
-                        
+                        if motion == "STILL" {
+                            self.startStillHeartbeatTimer()
+                        } else {
+                            self.stopStillHeartbeatTimer()
+                        }
                         #if DEBUG
                         print("Activity updated (debounced): \(motion) (\(confidence))")
                         #endif
@@ -159,6 +172,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.pendingConfidence = nil
             }
         }
+        stopStillHeartbeatTimer()
     }
 
     // MARK: - Geofence (visit boundary detection)
@@ -214,6 +228,27 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         case "AUTOMOTIVE":  manager.distanceFilter = 100
         case "CYCLING", "UNKNOWN": fallthrough
         default:            manager.distanceFilter = 30
+        }
+    }
+
+    /// Starts a repeating timer that sends a ping with lastLocation every 30 min while STILL.
+    private func startStillHeartbeatTimer() {
+        stopStillHeartbeatTimer()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.stillHeartbeatTimer = Timer.scheduledTimer(withTimeInterval: self.stillHeartbeatInterval, repeats: true) { [weak self] _ in
+                guard let self = self, let loc = self.lastLocation else { return }
+                NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence, force: true)
+            }
+            RunLoop.main.add(self.stillHeartbeatTimer!, forMode: .common)
+        }
+    }
+
+    /// Stops the STILL heartbeat timer.
+    private func stopStillHeartbeatTimer() {
+        DispatchQueue.main.async { [weak self] in
+            self?.stillHeartbeatTimer?.invalidate()
+            self?.stillHeartbeatTimer = nil
         }
     }
 
