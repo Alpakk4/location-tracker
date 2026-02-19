@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
 
     // 2. Build the body using the array directly
   const db_body = {
-    // These variables were outputted in the original function but won't be writted to database
+    // These variables were outputted in the original function but won't be written to database
     latitude: lat,
     longitude: long,
     deviceid: uid,

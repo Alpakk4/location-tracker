@@ -7,7 +7,7 @@
 import CoreLocation
 class NetworkingService {
     static let shared = NetworkingService()
-    private var last: Date?
+    private var lastPingTimes: [String: Date] = [:]
     private let throttleQueue = DispatchQueue(label: "NetworkingService.throttle")
     private let defaults = UserDefaults.standard
     private let manager = CLLocationManager()
@@ -59,16 +59,14 @@ class NetworkingService {
                     }
                 }()
 
-                if let l: Date = self.last {
-                    if (l + interval) > Date.now {
-                        #if DEBUG
-                        print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
-                        #endif
-                        return
-                    }
+                if let lastPing = self.lastPingTimes[activity], (lastPing + interval) > Date.now {
+                    #if DEBUG
+                    print("Cancelling: \(interval/60) minute limit for \(activity) not yet reached")
+                    #endif
+                    return
                 }
             }
-            self.last = Date.now
+            self.lastPingTimes[activity] = Date.now
 
             guard let url = self.endpointURL(path: "ping") else { return }
             var req = URLRequest(url: url)

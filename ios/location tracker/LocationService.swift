@@ -26,6 +26,9 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Tracks whether the previous motion update was STILL, to detect transitions.
     private var wasStationary = false
     
+    /// Only send pings when horizontal accuracy is within this threshold (meters).
+    private let maxHorizontalAccuracyForPing: CLLocationAccuracy = 50
+
     // MARK: - Motion debouncing properties
     private var debounceTimer: Timer?
     private var pendingMotion: String?
@@ -74,6 +77,8 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
             let newMotion = self.mapActivity(activity)
             let newConfidence = self.mapConfidence(activity.confidence)
 
+            self.updateDistanceFilter(for: newMotion)
+
             // Geofence lifecycle: register when becoming STILL, tear down when leaving STILL.
             // Use raw motion value (not debounced) for responsive geofence management.
             let isNowStationary = (newMotion == "STILL")
@@ -120,6 +125,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
                         self.currentConfidence = confidence
                         self.pendingMotion = nil
                         self.pendingConfidence = nil
+                        
+                        if let loc = self.lastLocation {
+                            NetworkingService.shared.sendLocation(loc, activity: motion, confidence: confidence, force: true)
+                        }
                         
                         #if DEBUG
                         print("Activity updated (debounced): \(motion) (\(confidence))")
@@ -197,6 +206,17 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         return "UNKNOWN"
     }
 
+    /// Sets CLLocationManager distance filter by activity for battery vs accuracy tradeoff.
+    private func updateDistanceFilter(for motion: String) {
+        switch motion {
+        case "STILL":       manager.distanceFilter = 50
+        case "WALKING", "RUNNING": manager.distanceFilter = 20
+        case "AUTOMOTIVE":  manager.distanceFilter = 100
+        case "CYCLING", "UNKNOWN": fallthrough
+        default:            manager.distanceFilter = 30
+        }
+    }
+
     /// Maps confidence enum to lowercase labels expected by downstream services.
     private func mapConfidence(_ confidence: CMMotionActivityConfidence) -> String {
         switch confidence {
@@ -217,7 +237,10 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             self.lastLocation = loc
         }
-        NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence)
+        let accuracyOk = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy <= maxHorizontalAccuracyForPing
+        if accuracyOk {
+            NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence)
+        }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
