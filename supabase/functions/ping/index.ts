@@ -5,6 +5,7 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import { getCategory } from "../_shared/place-types.ts";
 // define values
 // radius of earth in haversine calculations
 const R = 6371e3;
@@ -139,7 +140,10 @@ Deno.serve(async (req) => {
     })
     .filter((distance): distance is number => distance !== null);
 
-    // 2. Build the body using the array directly
+  const primary_type = isAtHome ? "home" : (firstPlace?.primaryType ?? "Unknown");
+  const place_category = primary_type === "home" ? "Home" : getCategory(primary_type);
+
+  // 2. Build the body using the array directly
   const db_body = {
     // These variables were outputted in the original function but won't be written to database
     latitude: lat,
@@ -147,7 +151,8 @@ Deno.serve(async (req) => {
     deviceid: uid,
     motion_type: motion,
     closest_place: firstPlace?.displayName?.text ?? "Unknown",
-    primary_type: isAtHome ? "home" : (firstPlace?.primaryType ?? "Unknown"),
+    primary_type,
+    place_category,
     // Pass the array directly. If it doesn't exist, send an empty array []
     other_types: firstPlace?.types ?? [], 
     possible_primary_types: possible_primary_types,

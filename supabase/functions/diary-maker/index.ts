@@ -2,9 +2,10 @@
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
-
+import { TABLE_A_PLACE_TYPES } from "../_shared/place-types.ts"
+import { getCategory } from "../_shared/place-types.ts"
 // ---------------------------------------------------------------------------
-// Types
+// Types & interfaces (groups of types)
 // ---------------------------------------------------------------------------
 
 interface PositionFromHome {
@@ -71,7 +72,7 @@ function distanceBetween(a: PositionFromHome, b: PositionFromHome): number {
   if (a.x_m != null && a.y_m != null && b.x_m != null && b.y_m != null) {
     const dx = a.x_m - b.x_m;
     const dy = a.y_m - b.y_m;
-    return Math.sqrt(dx * dx + dy * dy);
+    return Math.sqrt((dx * dx) + (dy * dy));
   }
   // Fallback: law of cosines on polar coordinates
   const dθ = (b.bearing - a.bearing) * Math.PI / 180;
@@ -92,11 +93,12 @@ function pairConfidence(dist: number, prevMotion: MotionType, currMotion: Motion
   const favorablePath = sameMotion || (isStillOrWalking && isMediumPlusConfidence(currMotion.confidence));
 
   if (favorablePath) {
+    // Between points,if the distance is less than 25m, return high confidence etc. When favourable path conditions are true e.g motion_type is the same OR still/walking and medium+ confidence.
     if (dist <= 25) return "high";
     if (dist <= 50) return "medium";
     return "low";
   } else {
-    // Different motion type
+    // Different motion type but within 75 m of previous point, return medium confidence. Otherwise return low confidence.
     if (dist <= 50) return "medium";
     return "low";
   }
@@ -329,6 +331,7 @@ function clusterCentroid(pings: RawPing[]): PositionFromHome {
   return { distance: dist, bearing: bear };
 }
 
+const TIME_GAP_BREAK_MS = 30 * 60 * 1000; // If two consecutive pings are more than 30 minutes apart, they are to be considered as from different clusters.
 function clusterPings(pings: RawPing[]): ClusterResult[] {
   if (pings.length === 0) return [];
 
@@ -338,9 +341,12 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 
   for (let i = 1; i < pings.length; i++) {
     const curr = pings[i];
+    const prev = pings[i - 1];
     const dist = distanceBetween(centroid, curr.position_from_home);
+    const time_diff = new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
+    
 
-    if (dist <= CLUSTER_RADIUS_M) {
+    if (dist <= CLUSTER_RADIUS_M && time_diff < TIME_GAP_BREAK_MS) {
       current.push(curr);
       // Update running centroid to include the new ping
       centroid = clusterCentroid(current);
@@ -392,7 +398,7 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 
 /** Minimum seconds a cluster must span to qualify as a full visit.
  *  Clusters shorter than this are capped at "low" confidence (transient stops). */
-const MIN_DWELL_SECONDS = 300; // 5 minutes
+const MIN_DWELL_SECONDS = 180; // 3 minutes
 
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   // Downgrade clusters that are too brief to be real visits
@@ -667,52 +673,13 @@ function segmentJourneys(
 // Synthetic (red herring) visit/journey injection for sensitivity/specificity
 // ---------------------------------------------------------------------------
 
-/** Representative subset of Google Places Table A types across all 19 categories.
- *  Used to generate synthetic visits with random place types. */
-const TABLE_A_PLACE_TYPES: string[] = [
-  // Automotive
-  "car_repair", "gas_station", "parking", "car_wash",
-  // Business
-  "corporate_office", "farm",
-  // Culture
-  "art_gallery", "museum", "performing_arts_theater", "monument",
-  // Education
-  "library", "school", "university", "primary_school",
-  // Entertainment and Recreation
-  "amusement_park", "bowling_alley", "community_center", "movie_theater",
-  "national_park", "park", "zoo", "night_club", "casino", "concert_hall",
-  // Facilities
-  "public_bathroom",
-  // Finance
-  "bank", "atm",
-  // Food and Drink
-  "restaurant", "cafe", "bakery", "bar", "coffee_shop", "fast_food_restaurant",
-  "ice_cream_shop", "pizza_restaurant", "sushi_restaurant", "steak_house",
-  "italian_restaurant", "chinese_restaurant", "mexican_restaurant",
-  // Geographical Areas
-  "locality",
-  // Government
-  "post_office", "courthouse", "city_hall", "police",
-  // Health and Wellness
-  "hospital", "pharmacy", "dentist", "doctor", "gym", "spa",
-  // Housing
-  "apartment_building", "apartment_complex",
-  // Lodging
-  "hotel", "hostel", "campground", "motel",
-  // Natural Features
-  "beach",
-  // Places of Worship
-  "church", "mosque", "synagogue",
-  // Services
-  "hair_salon", "laundry", "veterinary_care", "barber_shop", "beauty_salon",
-  // Shopping
-  "supermarket", "grocery_store", "clothing_store", "shopping_mall",
-  "convenience_store", "book_store", "electronics_store", "shoe_store",
-  // Sports
-  "fitness_center", "stadium", "swimming_pool", "golf_course",
-  // Transportation
-  "train_station", "bus_station", "airport", "subway_station",
-];
+
+// ---------------------------------------------------------------------------
+// Category Definitions and lookup mapping (for speed)
+// ---------------------------------------------------------------------------
+
+
+
 
 /** Pick a random element from an array. */
 function randomChoice<T>(arr: T[]): T {
@@ -922,7 +889,7 @@ function generateSyntheticJourneys(
 }
 
 // ---------------------------------------------------------------------------
-// Edge Function
+// Edge Function - Main Worker
 // ---------------------------------------------------------------------------
 
 serve(async (req) => {
@@ -1221,10 +1188,13 @@ serve(async (req) => {
     });
 
   } catch (err) {
-    console.error("Unexpected Error:", err.message);
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: err.message }), { 
+    // extract the error message safely
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Unexpected Error:", message);
+    return new Response(JSON.stringify({ error: "Internal Server Error", details: message }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
-    });
+    }
+  );
   }
 })
