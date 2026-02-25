@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		580C35042E65D98B0075EF36 /* Configuration.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 580C35032E65D98B0075EF36 /* Configuration.xcconfig */; };
+		0C261E192F4F09EB009D70D5 /* Configuration.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */; };
+		0C261E432F4F3E4A009D70D5 /* Configuration.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,7 +29,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		580C35032E65D98B0075EF36 /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
+		0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
+		0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
 		588086AD2E65A76C005096EF /* location tracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "location tracker.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		588086BA2E65A76E005096EF /* location trackerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "location trackerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		588086C42E65A76E005096EF /* location trackerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "location trackerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -80,11 +82,12 @@
 		588086A42E65A76C005096EF = {
 			isa = PBXGroup;
 			children = (
-				580C35032E65D98B0075EF36 /* Configuration.xcconfig */,
+				0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */,
 				588086AF2E65A76C005096EF /* location tracker */,
 				588086BD2E65A76E005096EF /* location trackerTests */,
 				588086C72E65A76E005096EF /* location trackerUITests */,
 				588086AE2E65A76C005096EF /* Products */,
+				0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -218,7 +221,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				580C35042E65D98B0075EF36 /* Configuration.xcconfig in Resources */,
+				0C261E192F4F09EB009D70D5 /* Configuration.xcconfig in Resources */,
+				0C261E432F4F3E4A009D70D5 /* Configuration.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,7 +282,7 @@
 /* Begin XCBuildConfiguration section */
 		588086CC2E65A76E005096EF /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 580C35032E65D98B0075EF36 /* Configuration.xcconfig */;
+			baseConfigurationReference = 0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -342,7 +346,7 @@
 		};
 		588086CD2E65A76E005096EF /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 580C35032E65D98B0075EF36 /* Configuration.xcconfig */;
+			baseConfigurationReference = 0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -399,7 +403,6 @@
 		};
 		588086CF2E65A76E005096EF /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 580C35032E65D98B0075EF36 /* Configuration.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -432,7 +435,6 @@
 		};
 		588086D02E65A76E005096EF /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 580C35032E65D98B0075EF36 /* Configuration.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
