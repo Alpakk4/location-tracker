@@ -30,7 +30,6 @@ alter table "public"."gcplar_responses" enable row level security;
 
 alter table "public"."whodas_responses" enable row level security;
 
-alter table "public"."locationsvisitednew" drop column "possible_places_distances";
 
 CREATE UNIQUE INDEX device_registry_gcplar_id_key ON public.device_registry USING btree (gcplar_id);
 
@@ -277,6 +276,6 @@ using (true);
 using (true);
 
 
-CREATE TRIGGER auto_generate_questionnaires BEFORE INSERT ON public.device_registry FOR EACH ROW EXECUTE FUNCTION public.initialize_new_device();
 
+CREATE TRIGGER auto_generate_questionnaires BEFORE INSERT ON public.device_registry FOR EACH ROW EXECUTE FUNCTION public.initialize_new_device();
 
