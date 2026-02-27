@@ -133,8 +133,62 @@ ADD COLUMN whodas_percent_score float
 ALTER TABLE whodas_responses
 ADD COLUMN IF NOT EXISTS whodas_complex_score float
 */
+/*
 ALTER TABLE whodas_responses
 ADD COLUMN d5_9 smallint,
 ADD COLUMN d5_10 smallint,
 ADD COLUMN d5_01 smallint,
 ADD COLUMN d5_02 smallint;
+*/
+/*
+ALTER TABLE whodas_responses
+DROP COLUMN d5_9,
+DROP COLUMN d5_10,
+DROP COLUMN d5_01,
+DROP COLUMN d5_02;
+*/
+/*
+ALTER TABLE whodas_responses
+ADD COLUMN do1_score float,
+ADD COLUMN do2_score float,
+ADD COLUMN do3_score float,
+ADD COLUMN do4_score float,
+ADD COLUMN do5_score float,
+ADD COLUMN do6_score float;
+
+ALTER TABLE whodas_responses
+ADD COLUMN do5_house_score float,
+ADD COLUMN do5_work_score float;
+
+ALTER TABLE whodas_responses
+DROP COLUMN do5_score;
+
+-- 1. Ensure columns exist to hold the link back to the device
+ALTER TABLE whodas_responses 
+ADD COLUMN IF NOT EXISTS device_id text;
+
+ALTER TABLE gcplar_responses 
+ADD COLUMN IF NOT EXISTS device_id text;
+
+-- 2. Add the Cascade constraints
+-- This tells Postgres: "If a device_id is deleted from device_register, 
+-- delete all rows here that match that device_id."
+
+ALTER TABLE whodas_responses
+DROP CONSTRAINT IF EXISTS fk_whodas_device,
+ADD CONSTRAINT fk_whodas_device
+FOREIGN KEY (device_id) 
+REFERENCES device_registry(device_id) 
+ON DELETE CASCADE;
+
+ALTER TABLE gcplar_responses
+DROP CONSTRAINT IF EXISTS fk_gcplar_device,
+ADD CONSTRAINT fk_gcplar_device
+FOREIGN KEY (device_id) 
+REFERENCES device_registry(device_id) 
+ON DELETE CASCADE;
+*/
+ALTER TABLE whodas_responses
+DROP COLUMN do5_house_score,
+DROP COLUMN do5_work_score,
+ADD COLUMN do5_score float;
