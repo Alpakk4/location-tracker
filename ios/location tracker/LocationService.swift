@@ -36,7 +36,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let debounceInterval: TimeInterval = 5.0
 
     /// When STILL, force a ping every 30 minutes using last location even if no location update occurred.
-    private let stillHeartbeatInterval: TimeInterval = 1800 // 30 min
+    private let stillHeartbeatInterval: TimeInterval = 1200 // 20 min
     private var stillHeartbeatTimer: Timer?
 
     override init() {
@@ -223,11 +223,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Sets CLLocationManager distance filter by activity for battery vs accuracy tradeoff.
     private func updateDistanceFilter(for motion: String) {
         switch motion {
-        case "STILL":       manager.distanceFilter = 50
+        case "STILL":       manager.distanceFilter = 20
         case "WALKING", "RUNNING": manager.distanceFilter = 20
         case "AUTOMOTIVE":  manager.distanceFilter = 100
         case "CYCLING", "UNKNOWN": fallthrough
-        default:            manager.distanceFilter = 30
+        default:            manager.distanceFilter = 50
         }
     }
 

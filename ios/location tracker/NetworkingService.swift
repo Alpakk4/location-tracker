@@ -52,9 +52,9 @@ class NetworkingService {
                 let interval: TimeInterval = {
                     switch activity {
                     case "WALKING":    return 120  // 2 mins
-                    case "CYCLING":    return 420  // 7 mins
+                    case "CYCLING":    return 240  // 4 mins
                     case "AUTOMOTIVE": return 600  // 10 mins
-                    case "STILL":      return 1800 // 30 mins
+                    case "STILL":      return 1200 // 20 mins
                     default:           return 300  // 5 mins default
                     }
                 }()
