@@ -11,9 +11,8 @@ struct ContentView: View {
     
     // --- Configuration State ---
     @State private var enableReporting: Bool = {
-        // Default to true if key doesn't exist
         if UserDefaults.standard.object(forKey: ConfigurationKeys.enableReporting) == nil {
-            return true
+            return false
         }
         return UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
     }()
@@ -41,6 +40,7 @@ struct ContentView: View {
     // --- Alert States ---
     @State private var showingPasswordAlert = false
     @State private var showingSetHomeAlert = false
+    @State private var showingDeviceIdRequiredAlert = false
     @State private var enteredPassword = ""
     
     // --- Backfill State ---
@@ -60,9 +60,8 @@ struct ContentView: View {
         isRefreshingFromDefaults = true
         defer { isRefreshingFromDefaults = false }
         
-        // Refresh enableReporting (default to true if not set)
         if UserDefaults.standard.object(forKey: ConfigurationKeys.enableReporting) == nil {
-            enableReporting = true
+            enableReporting = false
         } else {
             enableReporting = UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
         }
@@ -84,6 +83,15 @@ struct ContentView: View {
         isUidLocked = !refreshedUid.isEmpty
     }
     
+    // MARK: - Pause Countdown Formatting
+
+    private func formatCountdown(until endTime: Date, now: Date) -> String {
+        let remaining = max(0, endTime.timeIntervalSince(now))
+        let minutes = Int(remaining) / 60
+        let seconds = Int(remaining) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     // MARK: - Pause Timer Functions
     private func startPauseTimer() {
         // Cancel any existing task
@@ -266,7 +274,11 @@ struct ContentView: View {
                     .onChange(of: enableReporting) {
                         guard !isRefreshingFromDefaults else { return }
                         if enableReporting {
-                            // User wants to resume - cancel any active pause
+                            if uid.trimmingCharacters(in: .whitespaces).isEmpty {
+                                enableReporting = false
+                                showingDeviceIdRequiredAlert = true
+                                return
+                            }
                             if isPaused {
                                 cancelPause()
                             } else {
@@ -274,27 +286,38 @@ struct ContentView: View {
                                 defaults.set(true, forKey: ConfigurationKeys.enableReporting)
                             }
                         } else {
-                            // User wants to pause - start 25-minute pause timer
                             startPauseTimer()
                             defaults.set(false, forKey: ConfigurationKeys.enableReporting)
                         }
                     }
                     
-                    // Show cancel pause button when paused
                     if isPaused {
-                        Button(action: {
-                            cancelPause()
-                        }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text("Resume Now")
-                                    .fontWeight(.medium)
+                        VStack(spacing: 6) {
+                            if let endTime = pauseEndTime {
+                                TimelineView(.periodic(from: Date(), by: 1.0)) { context in
+                                    Label(
+                                        "Resuming in \(formatCountdown(until: endTime, now: context.date))",
+                                        systemImage: "clock"
+                                    )
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+
+                            Button(action: {
+                                cancelPause()
+                            }) {
+                                HStack {
+                                    Image(systemName: "play.fill")
+                                    Text("Resume Now")
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
                         .padding(.top, -10)
                     }
                     
@@ -418,20 +441,10 @@ struct ContentView: View {
             // Restore pause state if needed (checks stored pause end time)
             restorePauseIfNeeded()
             
-            // Start or stop location services based on state
             if enableReporting && !isPaused {
                 loc.start()
             } else {
                 loc.stop()
-            }
-            
-            // If enableReporting key wasn't set, default to ON and start
-            if defaults.object(forKey: ConfigurationKeys.enableReporting) == nil {
-                enableReporting = true
-                defaults.set(true, forKey: ConfigurationKeys.enableReporting)
-                if !isPaused {
-                    loc.start()
-                }
             }
         }
         .onDisappear {
@@ -500,6 +513,11 @@ struct ContentView: View {
         } message: {
             Text("Enter admin password to reset home coordinates.")
         }
+        .alert("Device ID Required", isPresented: $showingDeviceIdRequiredAlert) {
+            Button("OK") { }
+        } message: {
+            Text("Must set Device ID before starting location services for the first time.")
+        }
         .alert("Unlock Device ID", isPresented: $showingUidPasswordAlert) {
             SecureField("Enter Password", text: $uidEnteredPassword)
             Button("Cancel", role: .cancel) { uidEnteredPassword = "" }
@@ -528,6 +546,7 @@ struct ContentView: View {
 enum OnboardingStep {
     case location
     case motion
+    case deviceId
 }
 
 struct OnboardingFlowView: View {
@@ -541,6 +560,8 @@ struct OnboardingFlowView: View {
             locationStep
         case .motion:
             motionStep
+        case .deviceId:
+            deviceIdStep
         }
     }
 
@@ -627,8 +648,7 @@ struct OnboardingFlowView: View {
 
             if loc.isMotionAvailable {
                 Button(action: {
-                    loc.start()
-                    hasCompletedOnboarding = true
+                    step = .deviceId
                 }) {
                     Text("Enable Motion & Fitness")
                         .fontWeight(.bold)
@@ -642,7 +662,7 @@ struct OnboardingFlowView: View {
                 .padding(.bottom, 40)
             } else {
                 Button(action: {
-                    hasCompletedOnboarding = true
+                    step = .deviceId
                 }) {
                     Text("Continue")
                         .fontWeight(.bold)
@@ -655,6 +675,52 @@ struct OnboardingFlowView: View {
                 .padding(.horizontal, 40)
                 .padding(.bottom, 40)
             }
+        }
+    }
+
+    // Step 3: Device ID — must be set before accessing the main app.
+    @State private var onboardingDeviceId: String = ""
+
+    private var deviceIdStep: some View {
+        VStack(spacing: 30) {
+            Spacer()
+
+            Image(systemName: "person.text.rectangle")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 80, height: 80)
+                .foregroundColor(.blue)
+
+            Text("What is this device id?")
+                .font(.title).bold()
+
+            Text("Enter the identifier for this device. This is required before you can start using the app.")
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+                .foregroundColor(.secondary)
+
+            HStack {
+                TextField("Device ID", text: $onboardingDeviceId)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+
+                Button(action: {
+                    let trimmed = onboardingDeviceId.trimmingCharacters(in: .whitespaces)
+                    UserDefaults.standard.set(trimmed, forKey: ConfigurationKeys.uid)
+                    NetworkingService.shared.uid = trimmed
+                    hasCompletedOnboarding = true
+                }) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .resizable()
+                        .frame(width: 36, height: 36)
+                        .foregroundColor(onboardingDeviceId.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .blue)
+                }
+                .disabled(onboardingDeviceId.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 40)
+
+            Spacer()
         }
     }
 }

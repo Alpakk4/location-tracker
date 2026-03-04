@@ -59,13 +59,13 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  let allRows: { id: string; latitude: number; longitude: number }[] = [];
+  let allRows: { entryid: string; latitude: number; longitude: number }[] = [];
   let offset = 0;
 
   while (true) {
     const { data, error } = await supabase
       .from("locationsvisitednew")
-      .select("id, latitude, longitude")
+      .select("entryid, latitude, longitude")
       .eq("deviceid", deviceId)
       .range(offset, offset + PAGE_SIZE - 1);
 
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         return supabase
           .from("locationsvisitednew")
           .update({ position_from_home: pfh })
-          .eq("id", row.id);
+          .eq("entryid", row.entryid);
       });
 
     const results = await Promise.all(updates);
