@@ -17,8 +17,7 @@ struct ContentView: View {
         }
         return UserDefaults.standard.bool(forKey: ConfigurationKeys.enableReporting)
     }()
-    @State private var uid = SecureStore.getString(for: .uid)
-        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+    @State private var uid = UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
         ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
         ?? ""
     
@@ -33,8 +32,7 @@ struct ContentView: View {
     @State private var isHomeSet: Bool = UserDefaults.standard.bool(forKey: ConfigurationKeys.isHomeSet)
     
     // --- User ID Lock State ---
-    @State private var isUidLocked: Bool = !(SecureStore.getString(for: .uid)
-        ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+    @State private var isUidLocked: Bool = !(UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
         ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
         ?? "").isEmpty
     @State private var showingUidPasswordAlert = false
@@ -44,6 +42,11 @@ struct ContentView: View {
     @State private var showingPasswordAlert = false
     @State private var showingSetHomeAlert = false
     @State private var enteredPassword = ""
+    
+    // --- Backfill State ---
+    @State private var isBackfilling = false
+    @State private var showingBackfillAlert = false
+    @State private var backfillMessage = ""
     
     // --- Wobble State ---
     @State private var homeWobble = false
@@ -65,8 +68,7 @@ struct ContentView: View {
         }
         
         // Refresh uid
-        let refreshedUid = SecureStore.getString(for: .uid)
-            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+        let refreshedUid = UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
             ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
             ?? ""
         if refreshedUid != uid {
@@ -311,11 +313,6 @@ struct ContentView: View {
                                         guard !isRefreshingFromDefaults else { return }
                                         NetworkingService.shared.uid = uid
                                         defaults.set(uid, forKey: ConfigurationKeys.uid)
-                                        if uid.isEmpty {
-                                            _ = SecureStore.remove(.uid)
-                                        } else {
-                                            _ = SecureStore.setString(uid, for: .uid)
-                                        }
                                     }
                                     .onSubmit {
                                         if !uid.isEmpty {
@@ -377,8 +374,17 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(loc.lastLocation == nil || isHomeSet)
+                        .disabled(loc.lastLocation == nil || isHomeSet || isBackfilling)
                         .tint(isHomeSet ? .gray : .blue)
+                        
+                        if isBackfilling {
+                            HStack(spacing: 6) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Updating historical records...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                     .padding()
                     .overlay(
@@ -405,7 +411,6 @@ struct ContentView: View {
                defaults.string(forKey: ConfigurationKeys.uid) == nil {
                 uid = legacyUid
                 defaults.set(legacyUid, forKey: ConfigurationKeys.uid)
-                _ = SecureStore.setString(legacyUid, for: .uid)
                 defaults.removeObject(forKey: ConfigurationKeys.legacyUid)
             }
             NetworkingService.shared.uid = uid.isEmpty ? nil : uid
@@ -438,16 +443,37 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { }
             Button("Confirm", role: .destructive) {
                 if let last = loc.lastLocation {
-                    homeLat = last.coordinate.latitude
-                    homeLong = last.coordinate.longitude
+                    let lat = last.coordinate.latitude
+                    let lng = last.coordinate.longitude
+                    homeLat = lat
+                    homeLong = lng
                     isHomeSet = true
-                    _ = SecureStore.setDouble(last.coordinate.latitude, for: .homeLatitude)
-                    _ = SecureStore.setDouble(last.coordinate.longitude, for: .homeLongitude)
+                    isBackfilling = true
+                    _ = SecureStore.setDouble(lat, for: .homeLatitude)
+                    _ = SecureStore.setDouble(lng, for: .homeLongitude)
                     defaults.set(true, forKey: ConfigurationKeys.isHomeSet)
+
+                    NetworkingService.shared.callBackfillReframeHome(homeLat: lat, homeLong: lng) { result in
+                        DispatchQueue.main.async {
+                            isBackfilling = false
+                            switch result {
+                            case .success(let count):
+                                backfillMessage = "Updated \(count) historical records with new home."
+                            case .failure(let error):
+                                backfillMessage = "Backfill failed: \(error.localizedDescription)"
+                            }
+                            showingBackfillAlert = true
+                        }
+                    }
                 }
             }
         } message: {
             Text("This action can only be performed once. Are you sure?")
+        }
+        .alert("Home Backfill", isPresented: $showingBackfillAlert) {
+            Button("OK") { }
+        } message: {
+            Text(backfillMessage)
         }
         .alert("Admin Access", isPresented: $showingPasswordAlert) {
             SecureField("Enter Password", text: $enteredPassword)

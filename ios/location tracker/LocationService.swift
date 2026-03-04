@@ -25,19 +25,42 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     private static let geofenceIdentifier = "current-visit"
     /// Tracks whether the previous motion update was STILL, to detect transitions.
     private var wasStationary = false
-    
+
     /// Only send pings when horizontal accuracy is within this threshold (meters).
     private let maxHorizontalAccuracyForPing: CLLocationAccuracy = 50
 
-    // MARK: - Motion debouncing properties
-    private var debounceTimer: Timer?
-    private var pendingMotion: String?
-    private var pendingConfidence: String?
-    private let debounceInterval: TimeInterval = 5.0
+    // MARK: - Distance-based ping filtering
+    private var lastPingLocation: CLLocation?
 
-    /// When STILL, force a ping every 30 minutes using last location even if no location update occurred.
-    private let stillHeartbeatInterval: TimeInterval = 1200 // 20 min
-    private var stillHeartbeatTimer: Timer?
+    private static let pingDistanceThresholds: [String: CLLocationDistance] = [
+        "STILL": 50, "WALKING": 20, "RUNNING": 20,
+        "CYCLING": 30, "AUTOMOTIVE": 100, "UNKNOWN": 30
+    ]
+
+    // MARK: - Motion debouncer state
+
+    private struct MotionSample {
+        let motion: String
+        let confidenceValue: Double
+        let timestamp: Date
+    }
+
+    private var motionWindow: [MotionSample] = []
+    private let windowDuration: TimeInterval = 40
+    private var smoothedScores: [String: Double] = ["STILL": 1.0]
+    private let smoothingAlpha: Double = 0.3
+    private let hysteresisThreshold: Double = 0.15
+
+    private var stabilityCandidate: String?
+    private var stabilityCandidateStart: Date?
+    private let stabilityDuration: TimeInterval = 5.0
+    private var stabilityCheckTimer: Timer?
+
+    private var decayTimer: Timer?
+    private let decayTimeout: TimeInterval = 75
+
+    // MARK: - Per-mode heartbeat
+    private var heartbeatTimer: Timer?
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -45,9 +68,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = true
-        // Limit callback frequency so capture is useful without excessive upload churn.
-        manager.distanceFilter = 30
-        // Keep high accuracy because diary clustering benefits from precise coordinates.
+        manager.distanceFilter = 20
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
@@ -69,6 +90,8 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("Starting location service")
         #endif
         manager.startUpdatingLocation()
+        startHeartbeat(for: "STILL")
+        resetDecayTimer()
 
         guard CMMotionActivityManager.isActivityAvailable() else {
             #if DEBUG
@@ -78,77 +101,20 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         activityManager.startActivityUpdates(to: .main) { [weak self] activity in
             guard let self = self, let activity = activity else { return }
-            let newMotion = self.mapActivity(activity)
-            let newConfidence = self.mapConfidence(activity.confidence)
+            let rawMotion = self.mapActivity(activity)
 
-            self.updateDistanceFilter(for: newMotion)
-
-            // Geofence lifecycle: register when becoming STILL, tear down when leaving STILL.
-            // Use raw motion value (not debounced) for responsive geofence management.
-            let isNowStationary = (newMotion == "STILL")
+            // Geofence lifecycle uses raw (undebounced) motion for responsiveness.
+            let isNowStationary = (rawMotion == "STILL")
             if isNowStationary && !self.wasStationary {
-                // Transition into STILL — register a geofence at current location
                 if let loc = self.lastLocation {
                     self.registerVisitGeofence(at: loc)
                 }
             } else if !isNowStationary && self.wasStationary {
-                // Transition out of STILL — tear down any active geofence
                 self.tearDownGeofence()
             }
             self.wasStationary = isNowStationary
 
-            // Debounce motion status updates for smooth UI and reduced networking churn.
-            // Allow immediate update on first state (when still in initial state).
-            let isInitialState = (self.currentMotion == "STILL" && self.currentConfidence == "unknown")
-            
-            if isInitialState {
-                // First update: apply immediately without debouncing
-                DispatchQueue.main.async {
-                    self.currentMotion = newMotion
-                    self.currentConfidence = newConfidence
-                    if newMotion == "STILL" {
-                        self.startStillHeartbeatTimer()
-                    } else {
-                        self.stopStillHeartbeatTimer()
-                    }
-                }
-                #if DEBUG
-                print("Activity updated (initial): \(newMotion) (\(newConfidence))")
-                #endif
-            } else {
-                // Subsequent updates: debounce
-                self.pendingMotion = newMotion
-                self.pendingConfidence = newConfidence
-                
-                // Cancel existing timer
-                self.debounceTimer?.invalidate()
-                
-                // Create new timer on main queue
-                DispatchQueue.main.async {
-                    self.debounceTimer = Timer.scheduledTimer(withTimeInterval: self.debounceInterval, repeats: false) { [weak self] _ in
-                        guard let self = self,
-                              let motion = self.pendingMotion,
-                              let confidence = self.pendingConfidence else { return }
-                        
-                        self.currentMotion = motion
-                        self.currentConfidence = confidence
-                        self.pendingMotion = nil
-                        self.pendingConfidence = nil
-                        
-                        if let loc = self.lastLocation {
-                            NetworkingService.shared.sendLocation(loc, activity: motion, confidence: confidence, force: true)
-                        }
-                        if motion == "STILL" {
-                            self.startStillHeartbeatTimer()
-                        } else {
-                            self.stopStillHeartbeatTimer()
-                        }
-                        #if DEBUG
-                        print("Activity updated (debounced): \(motion) (\(confidence))")
-                        #endif
-                    }
-                }
-            }
+            self.processMotionSample(rawMotion, confidence: activity.confidence)
         }
     }
 
@@ -160,19 +126,183 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.stopUpdatingLocation()
         activityManager.stopActivityUpdates()
         tearDownGeofence()
-        
-        // Cancel debounce timer and apply any pending updates
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-        if let pendingMotion = pendingMotion, let pendingConfidence = pendingConfidence {
-            DispatchQueue.main.async {
-                self.currentMotion = pendingMotion
-                self.currentConfidence = pendingConfidence
-                self.pendingMotion = nil
-                self.pendingConfidence = nil
+
+        stabilityCheckTimer?.invalidate()
+        stabilityCheckTimer = nil
+        decayTimer?.invalidate()
+        decayTimer = nil
+        resetStabilityCandidate()
+        stopHeartbeat()
+    }
+
+    // MARK: - Motion Debouncer
+
+    /// Feeds a raw motion sample into the sliding-window debouncer.
+    /// The debouncer applies confidence-weighted scoring, exponential smoothing, a hysteresis gate,
+    /// and a stability timer before committing a mode change.
+    private func processMotionSample(_ motion: String, confidence: CMMotionActivityConfidence) {
+        let now = Date()
+        let confValue = confidenceWeight(confidence)
+
+        motionWindow.append(MotionSample(motion: motion, confidenceValue: confValue, timestamp: now))
+        motionWindow.removeAll { now.timeIntervalSince($0.timestamp) > windowDuration }
+
+        var windowScores: [String: Double] = [:]
+        var totalWeight = 0.0
+        for sample in motionWindow {
+            windowScores[sample.motion, default: 0] += sample.confidenceValue
+            totalWeight += sample.confidenceValue
+        }
+        if totalWeight > 0 {
+            for key in windowScores.keys { windowScores[key]! /= totalWeight }
+        }
+
+        let allMotions = Set(windowScores.keys).union(smoothedScores.keys)
+        for m in allMotions {
+            let windowVal = windowScores[m] ?? 0
+            let prev = smoothedScores[m] ?? 0
+            smoothedScores[m] = smoothingAlpha * windowVal + (1 - smoothingAlpha) * prev
+        }
+        smoothedScores = smoothedScores.filter { $0.value > 0.01 }
+
+        guard let topMode = smoothedScores.max(by: { $0.value < $1.value }) else { return }
+
+        if topMode.key != currentMotion {
+            let currentScore = smoothedScores[currentMotion] ?? 0
+            guard topMode.value - currentScore >= hysteresisThreshold else {
+                resetStabilityCandidate()
+                return
+            }
+
+            if stabilityCandidate == topMode.key {
+                if let start = stabilityCandidateStart, now.timeIntervalSince(start) >= stabilityDuration {
+                    commitMotion(topMode.key)
+                }
+            } else {
+                stabilityCandidate = topMode.key
+                stabilityCandidateStart = now
+                startStabilityCheckTimer()
+            }
+        } else {
+            resetStabilityCandidate()
+        }
+
+        resetDecayTimer()
+    }
+
+    /// Commits a new motion mode: updates published state, sends a forced boundary ping,
+    /// restarts the heartbeat timer for the new mode, and updates distanceFilter.
+    private func commitMotion(_ motion: String) {
+        resetStabilityCandidate()
+        let confidence = deriveConfidence(from: smoothedScores[motion] ?? 0)
+
+        let previousMotion = currentMotion
+        currentMotion = motion
+        currentConfidence = confidence
+
+        updateDistanceFilter(for: motion)
+
+        if let loc = lastLocation {
+            lastPingLocation = loc
+            NetworkingService.shared.sendLocation(loc, activity: motion, confidence: confidence, force: true)
+        }
+
+        if motion != previousMotion {
+            startHeartbeat(for: motion)
+        }
+
+        #if DEBUG
+        print("Motion committed: \(motion) (\(confidence))")
+        #endif
+    }
+
+    /// One-shot timer that re-evaluates the stability candidate after `stabilityDuration`.
+    private func startStabilityCheckTimer() {
+        stabilityCheckTimer?.invalidate()
+        let timer = Timer(timeInterval: stabilityDuration, repeats: false) { [weak self] _ in
+            guard let self = self,
+                  let candidate = self.stabilityCandidate,
+                  let topMode = self.smoothedScores.max(by: { $0.value < $1.value }),
+                  topMode.key == candidate else {
+                self?.resetStabilityCandidate()
+                return
+            }
+            let currentScore = self.smoothedScores[self.currentMotion] ?? 0
+            if topMode.value - currentScore >= self.hysteresisThreshold {
+                self.commitMotion(candidate)
+            } else {
+                self.resetStabilityCandidate()
             }
         }
-        stopStillHeartbeatTimer()
+        RunLoop.main.add(timer, forMode: .common)
+        stabilityCheckTimer = timer
+    }
+
+    private func resetStabilityCandidate() {
+        stabilityCandidate = nil
+        stabilityCandidateStart = nil
+        stabilityCheckTimer?.invalidate()
+        stabilityCheckTimer = nil
+    }
+
+    /// Resets the decay timer. If no motion samples arrive within `decayTimeout`, forces STILL.
+    private func resetDecayTimer() {
+        decayTimer?.invalidate()
+        let timer = Timer(timeInterval: decayTimeout, repeats: false) { [weak self] _ in
+            guard let self = self, self.currentMotion != "STILL" else { return }
+            #if DEBUG
+            print("Motion decay: no samples for \(self.decayTimeout)s, committing STILL")
+            #endif
+            self.smoothedScores = ["STILL": 1.0]
+            self.motionWindow.removeAll()
+            self.commitMotion("STILL")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        decayTimer = timer
+    }
+
+    private func confidenceWeight(_ confidence: CMMotionActivityConfidence) -> Double {
+        switch confidence {
+        case .low:    return 0.33
+        case .medium: return 0.67
+        case .high:   return 1.0
+        @unknown default: return 0.33
+        }
+    }
+
+    /// Derives a human-readable confidence label from the smoothed score for the committed mode.
+    private func deriveConfidence(from score: Double) -> String {
+        if score > 0.6 { return "high" }
+        if score > 0.3 { return "medium" }
+        return "low"
+    }
+
+    // MARK: - Per-mode Heartbeat
+
+    /// Starts a repeating heartbeat at the committed mode's throttle interval.
+    /// Heartbeats use `force: false` so they're still subject to the NetworkingService throttle gate.
+    private func startHeartbeat(for motion: String) {
+        stopHeartbeat()
+        let interval = NetworkingService.throttleInterval(for: motion)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+                guard let self = self, let loc = self.lastLocation else { return }
+                self.lastPingLocation = loc
+                NetworkingService.shared.sendLocation(
+                    loc, activity: self.currentMotion, confidence: self.currentConfidence, force: false
+                )
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.heartbeatTimer = timer
+        }
+    }
+
+    private func stopHeartbeat() {
+        DispatchQueue.main.async { [weak self] in
+            self?.heartbeatTimer?.invalidate()
+            self?.heartbeatTimer = nil
+        }
     }
 
     // MARK: - Geofence (visit boundary detection)
@@ -180,7 +310,6 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Registers a circular geofence at the given location to detect when the user leaves a visit.
     /// iOS region monitoring is battery-efficient (cell/WiFi, not continuous GPS) and supports up to 20 regions.
     private func registerVisitGeofence(at location: CLLocation) {
-        // Only one visit geofence at a time
         tearDownGeofence()
 
         let region = CLCircularRegion(
@@ -221,51 +350,23 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     /// Sets CLLocationManager distance filter by activity for battery vs accuracy tradeoff.
+    /// Values are set smaller than the per-mode ping-distance thresholds so the OS delivers
+    /// enough callbacks for the app-level distance gate to work.
     private func updateDistanceFilter(for motion: String) {
         switch motion {
-        case "STILL":       manager.distanceFilter = 20
-        case "WALKING", "RUNNING": manager.distanceFilter = 20
-        case "AUTOMOTIVE":  manager.distanceFilter = 100
-        case "CYCLING", "UNKNOWN": fallthrough
-        default:            manager.distanceFilter = 50
-        }
-    }
-
-    /// Starts a repeating timer that sends a ping with lastLocation every 30 min while STILL.
-    private func startStillHeartbeatTimer() {
-        stopStillHeartbeatTimer()
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.stillHeartbeatTimer = Timer.scheduledTimer(withTimeInterval: self.stillHeartbeatInterval, repeats: true) { [weak self] _ in
-                guard let self = self, let loc = self.lastLocation else { return }
-                NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence, force: true)
-            }
-            RunLoop.main.add(self.stillHeartbeatTimer!, forMode: .common)
-        }
-    }
-
-    /// Stops the STILL heartbeat timer.
-    private func stopStillHeartbeatTimer() {
-        DispatchQueue.main.async { [weak self] in
-            self?.stillHeartbeatTimer?.invalidate()
-            self?.stillHeartbeatTimer = nil
-        }
-    }
-
-    /// Maps confidence enum to lowercase labels expected by downstream services.
-    private func mapConfidence(_ confidence: CMMotionActivityConfidence) -> String {
-        switch confidence {
-        case .low:    return "low"
-        case .medium: return "medium"
-        case .high:   return "high"
-        @unknown default: return "unknown"
+        case "STILL":              manager.distanceFilter = 20
+        case "WALKING", "RUNNING": manager.distanceFilter = 10
+        case "CYCLING":            manager.distanceFilter = 15
+        case "AUTOMOTIVE":         manager.distanceFilter = 50
+        default:                   manager.distanceFilter = 15
         }
     }
 
     // MARK: - CLLocationManagerDelegate
 
     /// Forwards the latest location together with current motion context.
-    /// Contract: `lastLocation` updates on main queue for UI observation.
+    /// Only sends a ping when horizontal accuracy is acceptable and the device has moved
+    /// at least the per-mode ping-distance threshold since the last successful ping.
     func locationManager(_ manager: CLLocationManager,
                          didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
@@ -273,9 +374,15 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.lastLocation = loc
         }
         let accuracyOk = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy <= maxHorizontalAccuracyForPing
-        if accuracyOk {
-            NetworkingService.shared.sendLocation(loc, activity: self.currentMotion, confidence: self.currentConfidence)
+        guard accuracyOk else { return }
+
+        let threshold = Self.pingDistanceThresholds[currentMotion] ?? 30
+        if let lastPing = lastPingLocation, loc.distance(from: lastPing) < threshold {
+            return
         }
+
+        lastPingLocation = loc
+        NetworkingService.shared.sendLocation(loc, activity: currentMotion, confidence: currentConfidence)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -289,11 +396,11 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard region.identifier == Self.geofenceIdentifier else { return }
         tearDownGeofence()
 
-        // Force an immediate ping to mark the visit exit boundary.
         if let loc = manager.location {
             #if DEBUG
             print("Geofence exit detected — sending forced boundary ping")
             #endif
+            lastPingLocation = loc
             NetworkingService.shared.sendLocation(
                 loc,
                 activity: currentMotion,

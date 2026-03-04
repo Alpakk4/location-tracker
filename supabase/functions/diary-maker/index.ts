@@ -573,7 +573,7 @@ function segmentJourneys(
     // Collect pings strictly between the two visits
     const gapPings = allPings.filter(p => {
       const t = new Date(p.created_at).getTime();
-      return t >= gapStart && t <= gapEnd;
+      return t > gapStart && t < gapEnd;
     });
 
     if (gapPings.length === 0) continue;
@@ -923,6 +923,10 @@ serve(async (req) => {
 
     console.info(`Fetching diary for: ${deviceId} on ${date}`);
 
+    const nextDate = new Date(date + "T00:00:00Z");
+    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+    const nextDateStr = nextDate.toISOString().slice(0, 10);
+
     // 3b. Check if diary already exists and has been submitted
     const { data: existingDiary } = await supabase
       .from('diaries')
@@ -972,7 +976,7 @@ serve(async (req) => {
       `)
       .eq('deviceid', deviceId)
       .gte('created_at', `${date}T00:00:00Z`)
-      .lte('created_at', `${date}T23:59:59Z`)
+      .lt('created_at', `${nextDateStr}T00:00:00Z`)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -1029,148 +1033,127 @@ serve(async (req) => {
     if (diaryRow) {
       const diaryId = diaryRow.id;
 
-      // 6b. Check which visits already exist for this diary
-      const { data: existingVisits } = await supabase
+      // 6b. Delete all existing visit/journey data for a clean re-insert
+      const { error: clearError } = await supabase.rpc('clear_diary_data', {
+        p_diary_id: diaryId,
+      });
+      if (clearError) {
+        console.error("clear_diary_data RPC error:", clearError);
+      }
+
+      // 6c. Insert all visit rows (real + synthetic)
+      const visitRows = allVisits.map(c => ({
+        diary_id: diaryId,
+        visit_id: c.entryid,
+        primary_type: c.primary_type,
+        other_types: c.other_types,
+        motion_type: c.motion_type,
+        visit_confidence: c.visit_confidence,
+        visit_type: c.visit_type,
+        ping_count: c.ping_count,
+        cluster_duration_s: c.cluster_duration_s,
+        started_at: c.created_at,
+        ended_at: c.ended_at,
+        is_synthetic: syntheticVisitIds.has(c.entryid),
+        activity_label: null,
+        confirmed_place: null,
+        confirmed_activity: null,
+        user_context: null,
+      }));
+
+      const { data: insertedVisits, error: visitInsertError } = await supabase
         .from('diary_visits')
-        .select('visit_id')
-        .eq('diary_id', diaryId);
+        .insert(visitRows)
+        .select('id, visit_id');
 
-      const existingVisitIds = new Set(
-        (existingVisits ?? []).map((r: { visit_id: string }) => r.visit_id)
-      );
+      if (visitInsertError) {
+        console.error("Visit insert error:", visitInsertError);
+      } else {
+        console.info(`Pre-populated ${insertedVisits.length} visit rows`);
 
-      // 6c. Insert new visit rows (real + synthetic)
-      const newClusters = allVisits.filter(c => !existingVisitIds.has(c.entryid));
+        // 6d. Link visits to their constituent pings (skip synthetics)
+        const entryRows: { diary_visit_id: string; entry_id: string; position_in_cluster: number }[] = [];
 
-      if (newClusters.length > 0) {
-        const visitRows = newClusters.map(c => ({
+        for (const iv of insertedVisits) {
+          if (syntheticVisitIds.has(iv.visit_id)) continue;
+          const cluster = allVisits.find(c => c.entryid === iv.visit_id);
+          if (cluster) {
+            cluster.entry_ids.forEach((eid, idx) => {
+              entryRows.push({
+                diary_visit_id: iv.id,
+                entry_id: eid,
+                position_in_cluster: idx,
+              });
+            });
+          }
+        }
+
+        if (entryRows.length > 0) {
+          const { error: entryInsertError } = await supabase
+            .from('diary_visit_entries')
+            .insert(entryRows);
+          if (entryInsertError) {
+            console.error("Visit-entries insert error:", entryInsertError);
+          } else {
+            console.info(`Linked ${entryRows.length} pings to visits`);
+          }
+        }
+      }
+
+      // 6e. Insert all journey rows (real + synthetic)
+      if (allJourneys.length > 0) {
+        const journeyRows = allJourneys.map(j => ({
           diary_id: diaryId,
-          visit_id: c.entryid,
-          primary_type: c.primary_type,
-          other_types: c.other_types,
-          motion_type: c.motion_type,
-          visit_confidence: c.visit_confidence,
-          visit_type: c.visit_type,
-          ping_count: c.ping_count,
-          cluster_duration_s: c.cluster_duration_s,
-          started_at: c.created_at,
-          ended_at: c.ended_at,
-          is_synthetic: syntheticVisitIds.has(c.entryid),
-          activity_label: null,
-          confirmed_place: null,
-          confirmed_activity: null,
-          user_context: null,
+          journey_id: j.journey_id,
+          from_visit_id: j.from_visit_id,
+          to_visit_id: j.to_visit_id,
+          primary_transport: j.primary_transport,
+          transport_proportions: j.transport_proportions,
+          ping_count: j.ping_count,
+          journey_duration_s: j.journey_duration_s,
+          journey_confidence: j.journey_confidence,
+          started_at: j.started_at,
+          ended_at: j.ended_at,
+          is_synthetic: syntheticJourneyIds.has(j.journey_id),
+          confirmed_transport: null,
+          travel_reason: null,
         }));
 
-        const { data: insertedVisits, error: visitInsertError } = await supabase
-          .from('diary_visits')
-          .insert(visitRows)
-          .select('id, visit_id');
+        const { data: insertedJourneys, error: journeyInsertError } = await supabase
+          .from('diary_journeys')
+          .insert(journeyRows)
+          .select('id, journey_id');
 
-        if (visitInsertError) {
-          console.error("Visit insert error:", visitInsertError);
+        if (journeyInsertError) {
+          console.error("Journey insert error:", journeyInsertError);
         } else {
-          console.info(`Pre-populated ${insertedVisits.length} new visit rows`);
+          console.info(`Pre-populated ${insertedJourneys.length} journey rows`);
 
-          // 6d. Insert diary_visit_entries linking visits to their constituent pings
-          // Skip synthetic visits — they have no real pings to link.
-          const entryRows: { diary_visit_id: string; entry_id: string; position_in_cluster: number }[] = [];
+          // 6f. Link journeys to their pings (skip synthetics)
+          const journeyEntryRows: { diary_journey_id: string; entry_id: string; position_in_journey: number }[] = [];
 
-          for (const iv of insertedVisits) {
-            if (syntheticVisitIds.has(iv.visit_id)) continue;
-            const cluster = newClusters.find(c => c.entryid === iv.visit_id);
-            if (cluster) {
-              cluster.entry_ids.forEach((eid, idx) => {
-                entryRows.push({
-                  diary_visit_id: iv.id,
+          for (const ij of insertedJourneys) {
+            if (syntheticJourneyIds.has(ij.journey_id)) continue;
+            const journey = allJourneys.find(j => j.journey_id === ij.journey_id);
+            if (journey) {
+              journey.entry_ids.forEach((eid, idx) => {
+                journeyEntryRows.push({
+                  diary_journey_id: ij.id,
                   entry_id: eid,
-                  position_in_cluster: idx,
+                  position_in_journey: idx,
                 });
               });
             }
           }
 
-          if (entryRows.length > 0) {
-            const { error: entryInsertError } = await supabase
-              .from('diary_visit_entries')
-              .insert(entryRows);
-            if (entryInsertError) {
-              console.error("Visit-entries insert error:", entryInsertError);
+          if (journeyEntryRows.length > 0) {
+            const { error: journeyEntryInsertError } = await supabase
+              .from('diary_journey_entries')
+              .insert(journeyEntryRows);
+            if (journeyEntryInsertError) {
+              console.error("Journey-entries insert error:", journeyEntryInsertError);
             } else {
-              console.info(`Linked ${entryRows.length} pings to visits`);
-            }
-          }
-        }
-      }
-
-      // 6e. Insert journey rows (real + synthetic)
-      if (allJourneys.length > 0) {
-        const { data: existingJourneys } = await supabase
-          .from('diary_journeys')
-          .select('journey_id')
-          .eq('diary_id', diaryId);
-
-        const existingJourneyIds = new Set(
-          (existingJourneys ?? []).map((r: { journey_id: string }) => r.journey_id)
-        );
-
-        const newJourneys = allJourneys.filter(j => !existingJourneyIds.has(j.journey_id));
-
-        if (newJourneys.length > 0) {
-          const journeyRows = newJourneys.map(j => ({
-            diary_id: diaryId,
-            journey_id: j.journey_id,
-            from_visit_id: j.from_visit_id,
-            to_visit_id: j.to_visit_id,
-            primary_transport: j.primary_transport,
-            transport_proportions: j.transport_proportions,
-            ping_count: j.ping_count,
-            journey_duration_s: j.journey_duration_s,
-            journey_confidence: j.journey_confidence,
-            started_at: j.started_at,
-            ended_at: j.ended_at,
-            is_synthetic: syntheticJourneyIds.has(j.journey_id),
-            confirmed_transport: null,
-            travel_reason: null,
-          }));
-
-          const { data: insertedJourneys, error: journeyInsertError } = await supabase
-            .from('diary_journeys')
-            .insert(journeyRows)
-            .select('id, journey_id');
-
-          if (journeyInsertError) {
-            console.error("Journey insert error:", journeyInsertError);
-          } else {
-            console.info(`Pre-populated ${insertedJourneys.length} new journey rows`);
-
-            // 6f. Insert diary_journey_entries linking journeys to their pings
-            // Skip synthetic journeys — they have no real pings to link.
-            const journeyEntryRows: { diary_journey_id: string; entry_id: string; position_in_journey: number }[] = [];
-
-            for (const ij of insertedJourneys) {
-              if (syntheticJourneyIds.has(ij.journey_id)) continue;
-              const journey = newJourneys.find(j => j.journey_id === ij.journey_id);
-              if (journey) {
-                journey.entry_ids.forEach((eid, idx) => {
-                  journeyEntryRows.push({
-                    diary_journey_id: ij.id,
-                    entry_id: eid,
-                    position_in_journey: idx,
-                  });
-                });
-              }
-            }
-
-            if (journeyEntryRows.length > 0) {
-              const { error: journeyEntryInsertError } = await supabase
-                .from('diary_journey_entries')
-                .insert(journeyEntryRows);
-              if (journeyEntryInsertError) {
-                console.error("Journey-entries insert error:", journeyEntryInsertError);
-              } else {
-                console.info(`Linked ${journeyEntryRows.length} pings to journeys`);
-              }
+              console.info(`Linked ${journeyEntryRows.length} pings to journeys`);
             }
           }
         }

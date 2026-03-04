@@ -19,8 +19,7 @@ struct DiaryView: View {
     private let defaults = UserDefaults.standard
 
     private var deviceId: String {
-        SecureStore.getString(for: .uid)
-            ?? defaults.string(forKey: ConfigurationKeys.uid)
+        defaults.string(forKey: ConfigurationKeys.uid)
             ?? defaults.string(forKey: ConfigurationKeys.legacyUid)
             ?? ConfigurationDefaults.anonymousUid
     }

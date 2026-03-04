@@ -52,8 +52,7 @@ struct DiaryDayDetailView: View {
     @State private var showingAlreadySubmittedAlert = false
 
     private var deviceId: String {
-        SecureStore.getString(for: .uid)
-            ?? UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
+        UserDefaults.standard.string(forKey: ConfigurationKeys.uid)
             ?? UserDefaults.standard.string(forKey: ConfigurationKeys.legacyUid)
             ?? ConfigurationDefaults.anonymousUid
     }

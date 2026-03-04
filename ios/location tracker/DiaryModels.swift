@@ -191,8 +191,18 @@ struct DiaryDay: Codable, Identifiable {
 // MARK: - DiaryDay Hashable (needed for NavigationStack path)
 
 extension DiaryDay: Hashable {
-    static func == (lhs: DiaryDay, rhs: DiaryDay) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    static func == (lhs: DiaryDay, rhs: DiaryDay) -> Bool {
+        lhs.id == rhs.id &&
+        lhs.entries.map(\.id) == rhs.entries.map(\.id) &&
+        lhs.journeys.map(\.id) == rhs.journeys.map(\.id) &&
+        lhs.completedCount == rhs.completedCount
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        for entry in entries { hasher.combine(entry.id) }
+        for journey in journeys { hasher.combine(journey.id) }
+        hasher.combine(completedCount)
+    }
 }
 
 // MARK: - Submission Payload
