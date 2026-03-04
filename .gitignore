@@ -37,3 +37,5 @@ latex/main.synctex.gz
 latex/main.fls
 latex/main.fdb_latexmk
 latex/main.blg
+#Cursor
+.cursor/
