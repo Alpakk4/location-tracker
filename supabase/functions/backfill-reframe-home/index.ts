@@ -11,6 +11,7 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
 
 const PAGE_SIZE = 1000;
 const BATCH_SIZE = 50;
+const HOME_BOUNDARY_METRES = 30;
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -102,9 +103,14 @@ Deno.serve(async (req) => {
           row.latitude,
           row.longitude,
         );
+        const payload: Record<string, unknown> = { position_from_home: pfh };
+        if (pfh.distance <= HOME_BOUNDARY_METRES) {
+          payload.primary_type = "home";
+          payload.place_category = "Home";
+        }
         return supabase
           .from("locationsvisitednew")
-          .update({ position_from_home: pfh })
+          .update(payload)
           .eq("entryid", row.entryid);
       });
 
