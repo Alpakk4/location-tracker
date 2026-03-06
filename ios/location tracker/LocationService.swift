@@ -83,6 +83,34 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.requestAlwaysAuthorization()
     }
 
+    /// Ensures Motion & Fitness permission has been surfaced to the user.
+    /// If motion is unavailable, calls completion immediately. Otherwise performs a lightweight query
+    /// so the system shows the permission dialog, then waits until the user has responded before calling completion.
+    func ensureMotionPermission(completion: @escaping () -> Void) {
+        guard CMMotionActivityManager.isActivityAvailable() else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        let now = Date()
+        let shortlyAfter = now.addingTimeInterval(1)
+        activityManager.queryActivityStarting(from: now, to: shortlyAfter, to: .main) { [weak self] _, _ in
+            self?.waitForMotionAuthorizationResponse(completion: completion)
+        }
+    }
+
+    private func waitForMotionAuthorizationResponse(completion: @escaping () -> Void) {
+        let deadline = Date().addingTimeInterval(60)
+        func check() {
+            let status = CMMotionActivityManager.authorizationStatus()
+            if status != .notDetermined || Date() > deadline {
+                DispatchQueue.main.async { completion() }
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { check() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { check() }
+    }
+
     /// Starts both location callbacks and motion activity updates.
     /// If motion is unavailable, location still continues.
     func start() {

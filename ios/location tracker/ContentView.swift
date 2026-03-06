@@ -646,35 +646,21 @@ struct OnboardingFlowView: View {
 
             Spacer()
 
-            if loc.isMotionAvailable {
-                Button(action: {
+            Button(action: {
+                loc.ensureMotionPermission {
                     step = .deviceId
-                }) {
-                    Text("Enable Motion & Fitness")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 40)
-            } else {
-                Button(action: {
-                    step = .deviceId
-                }) {
-                    Text("Continue")
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 40)
+            }) {
+                Text(loc.isMotionAvailable ? "Enable Motion & Fitness" : "Continue")
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
             }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
         }
     }
 
@@ -738,7 +724,7 @@ struct ConfigRow: View {
                 .foregroundColor(.gray)
                 .frame(width: 20)
             TextField(title, text: $text)
-                .onChange(of: text) { onCommit() }
+                .onChange(of: text) { _, _ in onCommit() }
         }
         .padding()
     }

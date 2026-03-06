@@ -211,8 +211,8 @@ struct DiaryView: View {
             .onAppear {
                 diaryService.loadLocalDiaries()
             }
-            .onChange(of: path) {
-                if path.isEmpty {
+            .onChange(of: path) { _, newValue in
+                if newValue.isEmpty {
                     diaryService.loadLocalDiaries()
                 }
             }
