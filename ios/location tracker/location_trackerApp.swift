@@ -125,7 +125,7 @@ struct WelcomeLoadingView: View {
                     .font(.largeTitle)
                     .fontWeight(.bold)
 
-                Text("Preparing your activity diary experience…")
+                Text("Preparing your experience…")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

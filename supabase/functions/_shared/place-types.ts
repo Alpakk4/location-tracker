@@ -93,7 +93,7 @@ export const TABLE_A_PLACE_TYPES: string[] = [
     ],
       // Housing
     "Housing":[
-      "apartment_building", "apartment_complex", "condominium_complex", "housing_complex"
+      "apartment_building", "apartment_complex", "condominium_complex", "housing_complex","home"
     ],
       // Lodging
     "Lodging":[

@@ -466,7 +466,7 @@
 		588086CF2E65A76E005096EF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -474,6 +474,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
@@ -498,7 +499,7 @@
 		0CA00003304000000000A003 /* Debug-Local */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -506,6 +507,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
@@ -530,7 +532,7 @@
 		588086D02E65A76E005096EF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -538,6 +540,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
