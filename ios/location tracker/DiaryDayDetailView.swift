@@ -215,6 +215,7 @@ struct DiaryDayDetailView: View {
 struct DiaryEntryCard: View {
     @Binding var entry: DiaryEntry
     var onChanged: () -> Void
+    @State private var showContext = false
 
     /// Format "2026-02-06T13:25:12.434339+00:00" to "13:25"
     private func shortTime(_ iso: String) -> String {
@@ -242,6 +243,16 @@ struct DiaryEntryCard: View {
         case "medium": return .orange
         default:       return .red
         }
+    }
+
+    private var anyAnswerIsNo: Bool {
+        entry.confirmedCategory == false ||
+        entry.confirmedPlace == false ||
+        entry.confirmedActivity == false
+    }
+
+    private var contextIsVisible: Bool {
+        showContext || anyAnswerIsNo
     }
 
     var body: some View {
@@ -285,20 +296,36 @@ struct DiaryEntryCard: View {
                     .foregroundColor(.secondary)
             }
 
-            // Place type and activity
+            // Place type, category, and activity summary
             HStack {
                 Label(displayType, systemImage: "mappin.circle.fill")
                     .font(.headline)
             }
-            Text("Suggested activity: **\(entry.activityLabel)**")
+            Text("Category: **\(entry.placeCategory)** · Activity: **\(entry.activityLabel)**")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
             Divider()
 
-            // MARK: Question 1 – Place
+            // MARK: Question 1 – Category
             VStack(alignment: .leading, spacing: 6) {
-                Text("Were you at **\(displayType)**?")
+                Text("Were you at a **\(entry.placeCategory)** place?")
+                    .font(.subheadline)
+                HStack(spacing: 12) {
+                    AnswerButton(label: "Yes", isSelected: entry.confirmedCategory == true) {
+                        entry.confirmedCategory = true
+                        onChanged()
+                    }
+                    AnswerButton(label: "No", isSelected: entry.confirmedCategory == false) {
+                        entry.confirmedCategory = false
+                        onChanged()
+                    }
+                }
+            }
+
+            // MARK: Question 2 – Place
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Was that place **\(displayType)**?")
                     .font(.subheadline)
                 HStack(spacing: 12) {
                     AnswerButton(label: "Yes", isSelected: entry.confirmedPlace == true) {
@@ -312,7 +339,7 @@ struct DiaryEntryCard: View {
                 }
             }
 
-            // MARK: Question 2 – Activity
+            // MARK: Question 3 – Activity
             VStack(alignment: .leading, spacing: 6) {
                 Text("Were you doing **\(entry.activityLabel)**?")
                     .font(.subheadline)
@@ -328,12 +355,22 @@ struct DiaryEntryCard: View {
                 }
             }
 
-            // MARK: Context field (shown if either answer is "no")
-            if entry.confirmedPlace == false || entry.confirmedActivity == false {
+            // MARK: Context (always accessible; mandatory when any answer is No)
+            if contextIsVisible {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Please provide context:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    HStack {
+                        Text(anyAnswerIsNo ? "Please provide context (required):" : "Additional context (optional):")
+                            .font(.caption)
+                            .foregroundColor(anyAnswerIsNo ? .red : .secondary)
+                        Spacer()
+                        if !anyAnswerIsNo {
+                            Button { showContext = false } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                        }
+                    }
                     TextField("What were you actually doing?", text: Binding(
                         get: { entry.userContext ?? "" },
                         set: { newValue in
@@ -345,13 +382,23 @@ struct DiaryEntryCard: View {
                     .font(.subheadline)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                Button {
+                    showContext = true
+                } label: {
+                    Label("Add context", systemImage: "plus.bubble")
+                        .font(.caption)
+                        .foregroundColor(.indigo)
+                }
             }
         }
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
+        .animation(.easeInOut(duration: 0.2), value: entry.confirmedCategory)
         .animation(.easeInOut(duration: 0.2), value: entry.confirmedPlace)
         .animation(.easeInOut(duration: 0.2), value: entry.confirmedActivity)
+        .animation(.easeInOut(duration: 0.2), value: contextIsVisible)
     }
 }
 

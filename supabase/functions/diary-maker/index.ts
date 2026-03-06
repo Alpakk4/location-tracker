@@ -2,8 +2,8 @@
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
-import { TABLE_A_PLACE_TYPES } from "../_shared/place-types.ts"
-import { getCategory } from "../_shared/place-types.ts"
+import { TABLE_A_PLACE_TYPES, getCategory } from "../_shared/place-types.ts"
+import { getActivityForCategory } from "../_shared/category-activity-map.ts"
 // ---------------------------------------------------------------------------
 // Types & interfaces (groups of types)
 // ---------------------------------------------------------------------------
@@ -39,6 +39,8 @@ interface ClusterResult {
   ended_at: string;
   cluster_duration_s: number;
   primary_type: string;
+  place_category: string;
+  activity_label: string;
   other_types: string[];
   motion_type: MotionType;
   visit_confidence: "high" | "medium" | "low";
@@ -368,6 +370,7 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
     const lastPing = pingsInCluster[pingsInCluster.length - 1];
 
     const primaryTypes = pingsInCluster.map(p => p.primary_type);
+    const categories = pingsInCluster.map(p => getCategory(p.primary_type));
     const motionTypes = pingsInCluster.map(p => p.motion_type);
 
     // Union of all other_types (deduplicated)
@@ -376,13 +379,18 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
     // Most common motion_type (compare by serialised JSON key)
     const motionMode = mode(motionTypes.map(m => JSON.stringify(m)));
 
+    const primaryMode = mode(primaryTypes);
+    const pc = primaryMode === "home" ? "Home" : mode(categories);
+
     return {
       entryid: firstPing.entryid,
       entry_ids: pingsInCluster.map(p => p.entryid),
       created_at: firstPing.created_at,
       ended_at: lastPing.created_at,
       cluster_duration_s: durationSeconds(firstPing.created_at, lastPing.created_at),
-      primary_type: mode(primaryTypes),
+      primary_type: primaryMode,
+      place_category: pc,
+      activity_label: getActivityForCategory(pc),
       other_types: allOtherTypes,
       motion_type: JSON.parse(motionMode) as MotionType,
       visit_confidence,
@@ -785,6 +793,7 @@ function generateSyntheticVisits(
 
     const visitConfidence = randomVisitConfidence();
 
+    const synCat = primaryType === "home" ? "Home" : getCategory(primaryType);
     synthetics.push({
       entryid: `syn_${crypto.randomUUID()}`,
       entry_ids: [],
@@ -792,6 +801,8 @@ function generateSyntheticVisits(
       ended_at: new Date(visitEndMs).toISOString(),
       cluster_duration_s: visitDurationS,
       primary_type: primaryType,
+      place_category: synCat,
+      activity_label: getActivityForCategory(synCat),
       other_types: [],
       motion_type: { motion: "still", confidence: "medium" },
       visit_confidence: visitConfidence,
@@ -1046,6 +1057,8 @@ serve(async (req) => {
         diary_id: diaryId,
         visit_id: c.entryid,
         primary_type: c.primary_type,
+        place_category: c.place_category,
+        activity_label: c.activity_label,
         other_types: c.other_types,
         motion_type: c.motion_type,
         visit_confidence: c.visit_confidence,
@@ -1055,7 +1068,7 @@ serve(async (req) => {
         started_at: c.created_at,
         ended_at: c.ended_at,
         is_synthetic: syntheticVisitIds.has(c.entryid),
-        activity_label: null,
+        confirmed_category: null,
         confirmed_place: null,
         confirmed_activity: null,
         user_context: null,

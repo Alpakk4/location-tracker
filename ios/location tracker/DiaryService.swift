@@ -235,14 +235,16 @@ class DiaryService: ObservableObject {
                     endedAt: raw.ended_at,
                     clusterDurationSeconds: raw.cluster_duration_s,
                     primaryType: raw.primary_type,
+                    placeCategory: raw.place_category,
                     otherTypes: raw.other_types,
                     motionType: raw.motion_type,
                     visitConfidence: raw.visit_confidence,
                     visitType: raw.visit_type,
                     pingCount: raw.ping_count,
+                    confirmedCategory: nil,
                     confirmedPlace: nil,
                     confirmedActivity: nil,
-                    activityLabel: PlaceActivityMapping.activityLabel(for: raw.primary_type),
+                    activityLabel: raw.activity_label,
                     userContext: nil
                 )
             }
@@ -358,7 +360,9 @@ class DiaryService: ObservableObject {
         let submitEntries = diaryDay.entries.map { entry in
             DiarySubmitEntry(
                 source_entryid: entry.id,
+                place_category: entry.placeCategory,
                 activity_label: entry.activityLabel,
+                confirmed_category: entry.confirmedCategory ?? false,
                 confirmed_place: entry.confirmedPlace ?? false,
                 confirmed_activity: entry.confirmedActivity ?? false,
                 user_context: entry.userContext

@@ -23,6 +23,8 @@ struct DiaryMakerEntry: Codable {
     let ended_at: String
     let cluster_duration_s: Int
     let primary_type: String
+    let place_category: String
+    let activity_label: String
     let other_types: [String]
     let motion_type: MotionType
     let visit_confidence: String   // "high", "medium", or "low"
@@ -57,20 +59,24 @@ struct DiaryEntry: Codable, Identifiable {
     let endedAt: String
     let clusterDurationSeconds: Int
     let primaryType: String
+    let placeCategory: String
     let otherTypes: [String]
     let motionType: MotionType
     let visitConfidence: String     // "high", "medium", or "low"
     let visitType: String?          // "confirmed_visit", "visit", "brief_stop", "traffic_stop"
     let pingCount: Int
+    var confirmedCategory: Bool?    // nil = unanswered
     var confirmedPlace: Bool?       // nil = unanswered
     var confirmedActivity: Bool?    // nil = unanswered
-    var activityLabel: String       // derived from PlaceActivityMapping
-    var userContext: String?         // required if either answer is "no"
+    var activityLabel: String       // server-provided; fallback to PlaceActivityMapping
+    var userContext: String?         // required if any answer is "no"
 
-    /// Invariant: if either confirmation is false, non-empty `userContext` is required.
+    /// All three confirmations must be answered; context is mandatory when any is false.
     var isCompleted: Bool {
-        guard let cp = confirmedPlace, let ca = confirmedActivity else { return false }
-        if !cp || !ca {
+        guard let cc = confirmedCategory,
+              let cp = confirmedPlace,
+              let ca = confirmedActivity else { return false }
+        if !cc || !cp || !ca {
             guard let userContext else { return false }
             return !userContext.trimmingCharacters(in: .whitespaces).isEmpty
         }
@@ -86,6 +92,53 @@ struct DiaryEntry: Codable, Identifiable {
             return minutes > 0 ? "\(hours)h \(minutes)min" : "\(hours)h"
         }
         return "\(minutes) min"
+    }
+
+    // Backward compatibility: older cached diaries may lack placeCategory / confirmedCategory.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                     = try c.decode(String.self, forKey: .id)
+        entryIds               = try c.decode([String].self, forKey: .entryIds)
+        createdAt              = try c.decode(String.self, forKey: .createdAt)
+        endedAt                = try c.decode(String.self, forKey: .endedAt)
+        clusterDurationSeconds = try c.decode(Int.self, forKey: .clusterDurationSeconds)
+        primaryType            = try c.decode(String.self, forKey: .primaryType)
+        placeCategory          = try c.decodeIfPresent(String.self, forKey: .placeCategory) ?? "Unknown"
+        otherTypes             = try c.decode([String].self, forKey: .otherTypes)
+        motionType             = try c.decode(MotionType.self, forKey: .motionType)
+        visitConfidence        = try c.decode(String.self, forKey: .visitConfidence)
+        visitType              = try c.decodeIfPresent(String.self, forKey: .visitType)
+        pingCount              = try c.decode(Int.self, forKey: .pingCount)
+        confirmedCategory      = try c.decodeIfPresent(Bool.self, forKey: .confirmedCategory)
+        confirmedPlace         = try c.decodeIfPresent(Bool.self, forKey: .confirmedPlace)
+        confirmedActivity      = try c.decodeIfPresent(Bool.self, forKey: .confirmedActivity)
+        activityLabel          = try c.decode(String.self, forKey: .activityLabel)
+        userContext             = try c.decodeIfPresent(String.self, forKey: .userContext)
+    }
+
+    init(id: String, entryIds: [String], createdAt: String, endedAt: String,
+         clusterDurationSeconds: Int, primaryType: String, placeCategory: String,
+         otherTypes: [String], motionType: MotionType, visitConfidence: String,
+         visitType: String?, pingCount: Int, confirmedCategory: Bool?,
+         confirmedPlace: Bool?, confirmedActivity: Bool?, activityLabel: String,
+         userContext: String?) {
+        self.id = id
+        self.entryIds = entryIds
+        self.createdAt = createdAt
+        self.endedAt = endedAt
+        self.clusterDurationSeconds = clusterDurationSeconds
+        self.primaryType = primaryType
+        self.placeCategory = placeCategory
+        self.otherTypes = otherTypes
+        self.motionType = motionType
+        self.visitConfidence = visitConfidence
+        self.visitType = visitType
+        self.pingCount = pingCount
+        self.confirmedCategory = confirmedCategory
+        self.confirmedPlace = confirmedPlace
+        self.confirmedActivity = confirmedActivity
+        self.activityLabel = activityLabel
+        self.userContext = userContext
     }
 }
 
@@ -219,7 +272,9 @@ struct DiarySubmitPayload: Codable {
 /// User-confirmed answers for one visit cluster.
 struct DiarySubmitEntry: Codable {
     let source_entryid: String
+    let place_category: String
     let activity_label: String
+    let confirmed_category: Bool
     let confirmed_place: Bool
     let confirmed_activity: Bool
     let user_context: String?
