@@ -373,3 +373,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/diary-submit/deno.json"
 entrypoint = "./functions/diary-submit/index.ts"
+
+[functions.decommission-device]
+enabled = true
+verify_jwt = false
+import_map = "./functions/decommission-device/deno.json"
+entrypoint = "./functions/decommission-device/index.ts"
