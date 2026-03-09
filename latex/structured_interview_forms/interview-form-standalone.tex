@@ -1,0 +1,78 @@
+% Standalone PDF: Structured Interview Response Form
+% Compile with: pdflatex interview-form-standalone.tex
+% Use the output PDF as a template; duplicate for each participant.
+
+\documentclass[11pt]{article}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Structured Interview Response Form}
+\author{}
+\date{}
+\maketitle
+
+\section*{Study Feedback --- Response recording}
+
+The following table lists the structured interview questions. Use the right-hand column to record responses; the PDF form fields can be filled digitally.
+
+\vspace{1em}
+\noindent
+\begin{Form}
+\noindent
+\textbf{Participant device ID:}\hspace{0.5em}\TextField[name=participantdeviceid, width=8cm, height=1.2em, bordercolor=0.7 0.7 0.7]{}
+
+\vspace{1em}
+\noindent
+\begin{longtable}[t]{@{}>{\raggedright\arraybackslash}p{0.52\textwidth}@{\hspace{1em}}>{\vspace{0pt}}p{0.42\textwidth}@{}}
+\toprule
+\textbf{Question} & \textbf{Response} \\
+\midrule
+\endfirsthead
+
+\multicolumn{2}{l}{\textit{Continued from previous page}} \\
+\toprule
+\textbf{Question} & \textbf{Response} \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{2}{r}{\textit{Continued on next page}} \\
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+Do you feel your participation and activity over the data collection period was typical for you?
+& \vspace{0pt}\TextField[name=q1, multiline=true, height=1.8cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+In your own words, what was your overall experience of participating in the study? You may include positive and negative aspects of the study, as well as any suggestions for improvement in your answer.
+& \vspace{0pt}\TextField[name=q2, multiline=true, height=2.2cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+What was your experience/perception of having the types of locations you visited during this period recorded during this study?
+& \vspace{0pt}\TextField[name=q3, multiline=true, height=2cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+Would you change how the study was explained to you?
+& \vspace{0pt}\TextField[name=q4, multiline=true, height=1.8cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+How do you feel about the study now?
+& \vspace{0pt}\TextField[name=q5, multiline=true, height=1.8cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+Do you have any other comments or questions about the data collected during this study, or what is done with it?
+& \vspace{0pt}\TextField[name=q6, multiline=true, height=2cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+What is your understanding of the data you have provided and how it will be used?
+& \vspace{0pt}\TextField[name=q7, multiline=true, height=2cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\[0.4em]
+
+Consider a set of entries, how did you achieve the activities contained in the entries? What was your aim? And did you participate with another person?
+& \vspace{0pt}\TextField[name=q8, multiline=true, height=2.2cm, width=\linewidth, bordercolor=0.7 0.7 0.7]{} \\
+
+\end{longtable}
+\end{Form}
+
+\end{document}
