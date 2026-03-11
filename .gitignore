@@ -6,19 +6,20 @@ supabase/.branches
 Configuration.xcconfig
 *.xcconfig
 
-# Xcode UI settings 
+# Xcode UI settings
 *.xcuserstate
 project.xcworkspace/xcuserdata/
-*.xcuserdatad
+**/xcuserdata/
+**/xcuserdatad/
 *.pb*
 
 # Build products
 build/
 DerivedData/
+.deriveddata/
 
 # System files
 .DS_Store
-Configuration.xcconfig
 
 # CocoaPods (if you use them)
 Pods/
@@ -50,12 +51,15 @@ latex//structured_interview_forms/interview-form-standalone.fls
 #Cursor
 .cursor/
 
-# iOS app icon / assets (optional: remove if you want to version AppIcon)
-AppIcon/
-Assets.xcassets/
+# LaTeX built PDFs
+latex/**/*.pdf
+
+# Supabase Studio (local snippets)
+supabase/snippets/
 
 # Android
 android/local.properties
+**/local.properties
 android/.gradle/
 android/app/build/
 android/build/
