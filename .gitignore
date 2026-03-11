@@ -2,6 +2,7 @@ supabase/.temp
 supabase/.branches
 .env
 .env.local
+**/.env.local
 Configuration.xcconfig
 *.xcconfig
 
@@ -49,6 +50,9 @@ latex//structured_interview_forms/interview-form-standalone.fls
 #Cursor
 .cursor/
 
+# iOS app icon / assets (optional: remove if you want to version AppIcon)
+AppIcon/
+Assets.xcassets/
 
 # Android
 android/local.properties
