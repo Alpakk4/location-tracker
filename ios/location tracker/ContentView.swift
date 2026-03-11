@@ -210,8 +210,10 @@ struct ContentView: View {
             
             // MARK: 1. Top Banner (Live Location)
             HStack {
-                Image(systemName: "location.fill")
-                    .foregroundColor(.blue)
+                Image("PingloIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 90, height: 90)
                 
                 if let last = loc.lastLocation {
                     VStack(alignment: .leading) {
@@ -229,10 +231,11 @@ struct ContentView: View {
                 Spacer()
             }
             .padding()
-            .background(Color.blue.opacity(0.1))
+            .background(Color.purple.opacity(0.1))
             .cornerRadius(12)
             
             // MARK: 2. Styled "Send Ping" Button
+            #if DEBUG
             Button(action: {
                 if let last = loc.lastLocation {
                     NetworkingService.shared.sendLocation(last, activity: loc.currentMotion, confidence: loc.currentConfidence, force: true)
@@ -245,18 +248,18 @@ struct ContentView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
-                .foregroundColor(.blue)
+                .foregroundColor(.purple)
                 .background(Color.white)
                 .overlay(
                     RoundedRectangle(cornerRadius: 15)
-                        .stroke(Color.blue, lineWidth: 2)
+                        .stroke(Color.purple, lineWidth: 2)
                 )
                 .shadow(color: .gray.opacity(0.2), radius: 4, x: 0, y: 2)
             }
             .padding(.horizontal, 40)
             .disabled(loc.lastLocation == nil)
             .opacity(loc.lastLocation == nil ? 0.6 : 1.0)
-            
+            #endif
             Divider()
             
             // MARK: 3. Configuration Area
@@ -270,6 +273,7 @@ struct ContentView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(10)
                     .disabled(isPaused)
+                    .tint(.mint)
                     .opacity(isPaused ? 0.6 : 1.0)
                     .onChange(of: enableReporting) {
                         guard !isRefreshingFromDefaults else { return }
@@ -316,7 +320,7 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(.blue)
+                            .tint(.purple)
                         }
                         .padding(.top, -10)
                     }
@@ -398,7 +402,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(loc.lastLocation == nil || isHomeSet || isBackfilling)
-                        .tint(isHomeSet ? .gray : .blue)
+                        .tint(isHomeSet ? .green : .purple)
                         
                         if isBackfilling {
                             HStack(spacing: 6) {
@@ -570,10 +574,10 @@ struct OnboardingFlowView: View {
         VStack(spacing: 30) {
             Spacer()
 
-            Image(systemName: "location.circle.fill")
+            Image("PingloIcon")
                 .resizable()
-                .frame(width: 80, height: 80)
-                .foregroundColor(.blue)
+                .scaledToFit()
+                .frame(width: 200, height: 200)
 
             Text("Enable Background Tracking")
                 .font(.title).bold()
@@ -585,11 +589,11 @@ struct OnboardingFlowView: View {
 
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top) {
-                    Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                    Image(systemName: "1.circle.fill").foregroundColor(.purple)
                     Text("Select **'Allow While Using App'** when prompted.")
                 }
                 HStack(alignment: .top) {
-                    Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                    Image(systemName: "2.circle.fill").foregroundColor(.purple)
                     Text("Then, go to **Settings > Apps > pingLo > Location** and set it to **'Always'**.")
                 }
             }
@@ -605,7 +609,7 @@ struct OnboardingFlowView: View {
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
+                    .background(Color.purple)
                     .foregroundColor(.white)
                     .cornerRadius(12)
             }
@@ -624,10 +628,10 @@ struct OnboardingFlowView: View {
         VStack(spacing: 30) {
             Spacer()
 
-            Image(systemName: "figure.walk")
+            Image(systemName: "figure.walk.motion")
                 .resizable()
                 .frame(width: 80, height: 80)
-                .foregroundColor(.blue)
+                .foregroundColor(.purple)
 
             Text("Enable Activity Detection")
                 .font(.title).bold()
@@ -655,7 +659,7 @@ struct OnboardingFlowView: View {
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
+                    .background(Color.purple)
                     .foregroundColor(.white)
                     .cornerRadius(12)
             }
@@ -671,11 +675,11 @@ struct OnboardingFlowView: View {
         VStack(spacing: 30) {
             Spacer()
 
-            Image(systemName: "person.text.rectangle")
+            Image(systemName: "person.text.rectangle.fill")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 80, height: 80)
-                .foregroundColor(.blue)
+                .foregroundColor(.purple)
 
             Text("What is this device id?")
                 .font(.title).bold()
@@ -700,7 +704,7 @@ struct OnboardingFlowView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .resizable()
                         .frame(width: 36, height: 36)
-                        .foregroundColor(onboardingDeviceId.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .blue)
+                        .foregroundColor(onboardingDeviceId.trimmingCharacters(in: .whitespaces).isEmpty ? .purple : .green)
                 }
                 .disabled(onboardingDeviceId.trimmingCharacters(in: .whitespaces).isEmpty)
             }

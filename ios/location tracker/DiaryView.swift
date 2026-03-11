@@ -88,7 +88,7 @@ struct DiaryView: View {
                             buildDiary(for: yesterday)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.indigo)
+                        .tint(.purple)
                         .disabled(diaryService.isLoading)
 
                         #if DEBUG

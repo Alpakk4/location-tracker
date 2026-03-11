@@ -115,11 +115,10 @@ struct WelcomeLoadingView: View {
             Spacer()
 
             VStack(spacing: 16) {
-                Image(systemName: "location.circle.fill")
+                Image("PingloIcon")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 80, height: 80)
-                    .foregroundColor(.blue)
+                    .frame(width: 200, height: 200)
 
                 Text("Welcome to pingLo")
                     .font(.largeTitle)

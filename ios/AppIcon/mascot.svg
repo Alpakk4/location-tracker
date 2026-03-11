@@ -1,0 +1,16 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <g id="mascot-layer">
+    <g>
+      <line x1="100" y1="52" x2="100" y2="35" stroke="#2D3A3A" stroke-width="5" stroke-linecap="round"/>
+      <line x1="100" y1="52" x2="100" y2="35" stroke="#5DAFA7" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="100" cy="31" r="7" fill="#5DAFA7" stroke="#2D3A3A" stroke-width="3" />
+    </g>
+    <path d="M 100 125 C 85 118 65 100 65 82 A 35 35 0 1 1 135 82 C 135 100 115 118 100 125 Z" fill="#5DAFA7" stroke="#2D3A3A" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="100" cy="82" r="22" fill="white" stroke="#6B2F98" stroke-width="1.5"/>
+    <circle cx="100" cy="82" r="5.5" fill="#1A0A2E"/>
+    <g>
+      <path d="M 70 90 Q 55 85 50 95" stroke="#2D3A3A" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M 130 90 Q 145 85 150 95" stroke="#2D3A3A" stroke-width="6" stroke-linecap="round" fill="none"/>
+    </g>
+  </g>
+</svg>

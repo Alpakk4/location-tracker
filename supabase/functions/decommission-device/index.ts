@@ -1,27 +1,18 @@
-// decommission-device: Admin-only. Unlinks a device so device_id can be reused.
-// Steps: (1) Optionally revoke JWT by deleting the Auth user. (2) Clear link (auth_uid = null) or delete the device_registry row.
+// decommission-device: Admin-only. Deletes a device from device_registry
+// so the device_id can no longer submit data.
 // Call with X-Admin-Secret header set to ADMIN_SECRET env. No JWT required.
 
-import { serve } from "std/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "supabase";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-secret",
-};
-
-function jsonResponse(body: Record<string, unknown>, status: number, headers?: Record<string, string>): Response {
+function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json" },
   });
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
@@ -32,7 +23,7 @@ serve(async (req) => {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  let body: { deviceId?: string; deleteRow?: boolean; revokeJwt?: boolean };
+  let body: { deviceId?: string };
   try {
     body = await req.json();
   } catch {
@@ -43,9 +34,6 @@ serve(async (req) => {
   if (typeof deviceId !== "string" || !deviceId.trim()) {
     return jsonResponse({ error: "deviceId is required and must be a non-empty string" }, 400);
   }
-
-  const deleteRow = body.deleteRow === true;
-  const revokeJwt = body.revokeJwt !== false; // default true
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -58,7 +46,7 @@ serve(async (req) => {
 
   const { data: row, error: fetchError } = await supabase
     .from("device_registry")
-    .select("device_id, auth_uid")
+    .select("device_id")
     .eq("device_id", deviceId.trim())
     .maybeSingle();
 
@@ -71,42 +59,16 @@ serve(async (req) => {
     return jsonResponse({ error: "Device not found in registry", deviceId: deviceId.trim() }, 404);
   }
 
-  const authUid: string | null = row.auth_uid ?? null;
-  const result: { deviceId: string; authUidRevoked: boolean; rowCleared: boolean; rowDeleted: boolean } = {
-    deviceId: deviceId.trim(),
-    authUidRevoked: false,
-    rowCleared: false,
-    rowDeleted: false,
-  };
+  const { error: deleteError } = await supabase
+    .from("device_registry")
+    .delete()
+    .eq("device_id", deviceId.trim());
 
-  if (revokeJwt && authUid) {
-    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(authUid);
-    if (deleteUserError) {
-      console.error("Auth admin deleteUser error:", deleteUserError);
-      return jsonResponse({ error: "Failed to revoke JWT (delete Auth user)" }, 500);
-    }
-    result.authUidRevoked = true;
+  if (deleteError) {
+    console.error("device_registry delete error:", deleteError);
+    return jsonResponse({ error: "Failed to delete device row" }, 500);
   }
 
-  if (deleteRow) {
-    const { error: deleteError } = await supabase.from("device_registry").delete().eq("device_id", deviceId.trim());
-    if (deleteError) {
-      console.error("device_registry delete error:", deleteError);
-      return jsonResponse({ error: "Failed to delete device row" }, 500);
-    }
-    result.rowDeleted = true;
-  } else {
-    const { error: updateError } = await supabase
-      .from("device_registry")
-      .update({ auth_uid: null })
-      .eq("device_id", deviceId.trim());
-    if (updateError) {
-      console.error("device_registry update error:", updateError);
-      return jsonResponse({ error: "Failed to clear auth_uid" }, 500);
-    }
-    result.rowCleared = true;
-  }
-
-  console.info("Decommissioned device", result);
-  return jsonResponse({ ok: true, result }, 200);
+  console.info("Decommissioned device", { deviceId: deviceId.trim() });
+  return jsonResponse({ ok: true, deviceId: deviceId.trim() }, 200);
 });
