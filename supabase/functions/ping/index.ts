@@ -69,6 +69,25 @@ Deno.serve(async (req) => {
 
   console.info("ping request received", { uidPresent: Boolean(uid), hasHome: home_lat != null && home_long != null });
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  const { data: device, error: deviceError } = await supabase
+    .from("device_registry")
+    .select("device_id")
+    .eq("device_id", uid)
+    .maybeSingle();
+
+  if (deviceError) {
+    console.error("device_registry lookup failed:", deviceError.message);
+    return jsonResponse({ error: "Unknown device" }, 403);
+  }
+  if (!device) {
+    return jsonResponse({ error: "Unknown device" }, 403);
+  }
+
   const maps_base = "https://places.googleapis.com/v1/places:searchNearby";
   const maps_body = {
     maxResultCount: 5,
@@ -84,8 +103,21 @@ Deno.serve(async (req) => {
     }
   };
 
-  const defaultHomeLat = parseFloat(Deno.env.get("DEFAULT_HOME_LAT") ?? "");
-  const defaultHomeLong = parseFloat(Deno.env.get("DEFAULT_HOME_LONG") ?? "");
+  // Default home (e.g. London) when client doesn't send home; override via env.
+  const DEFAULT_HOME_LAT_FALLBACK = 51.503349370657986;
+  const DEFAULT_HOME_LONG_FALLBACK = -0.0868719398915672;
+  const defaultHomeLat = (() => {
+    const v = Deno.env.get("DEFAULT_HOME_LAT");
+    if (v == null || v === "") return DEFAULT_HOME_LAT_FALLBACK;
+    const n = parseFloat(v);
+    return isFinite(n) ? n : DEFAULT_HOME_LAT_FALLBACK;
+  })();
+  const defaultHomeLong = (() => {
+    const v = Deno.env.get("DEFAULT_HOME_LONG");
+    if (v == null || v === "") return DEFAULT_HOME_LONG_FALLBACK;
+    const n = parseFloat(v);
+    return isFinite(n) ? n : DEFAULT_HOME_LONG_FALLBACK;
+  })();
 
   const hasUserHome = home_lat != null && home_long != null;
   const effectiveHomeLat = hasUserHome ? home_lat : (isFinite(defaultHomeLat) ? defaultHomeLat : null);
@@ -183,18 +215,14 @@ Deno.serve(async (req) => {
   }
 
   console.info("Saving resolved ping record");
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!
-  );
 
   const { error: insertError } = await supabase
     .from("locationsvisitednew")
     .insert([db_body]);
 
   if (insertError) {
-    console.info("insert failed", insertError.message);
-    return jsonResponse({ error: "insert failed", detail: insertError.message }, 502);
+    console.error("insert failed:", insertError.message);
+    return jsonResponse({ error: "insert failed" }, 502);
   }
 
   console.info("ping stored");

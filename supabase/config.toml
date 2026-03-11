@@ -374,6 +374,12 @@ verify_jwt = false
 import_map = "./functions/diary-submit/deno.json"
 entrypoint = "./functions/diary-submit/index.ts"
 
+[functions.backfill-reframe-home]
+enabled = true
+verify_jwt = false
+import_map = "./functions/backfill-reframe-home/deno.json"
+entrypoint = "./functions/backfill-reframe-home/index.ts"
+
 [functions.decommission-device]
 enabled = true
 verify_jwt = false

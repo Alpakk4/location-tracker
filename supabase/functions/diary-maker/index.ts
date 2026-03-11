@@ -991,8 +991,8 @@ serve(async (req) => {
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error("Supabase Error:", error);
-      return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+      console.error("Supabase query error:", error);
+      return new Response(JSON.stringify({ error: "Failed to fetch location data" }), { status: 500 });
     }
 
     // 5. Filter out inaccurate pings, then smooth, cluster, classify, and select
@@ -1184,13 +1184,11 @@ serve(async (req) => {
     });
 
   } catch (err) {
-    // extract the error message safely
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Unexpected Error:", message);
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: message }), { 
+    console.error("Unexpected error:", message);
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
-    }
-  );
+    });
   }
 })

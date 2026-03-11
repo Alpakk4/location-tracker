@@ -76,7 +76,7 @@ serve(async (req) => {
         )
       }
 
-      return new Response(JSON.stringify({ error: error.message }), {
+      return new Response(JSON.stringify({ error: "Diary submission failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
@@ -90,9 +90,9 @@ serve(async (req) => {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error("Unexpected Error:", message)
+    console.error("Unexpected error:", message)
     return new Response(
-      JSON.stringify({ error: "Internal Server Error", details: message }),
+      JSON.stringify({ error: "Internal Server Error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -60,6 +60,20 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const { data: device, error: deviceError } = await supabase
+    .from("device_registry")
+    .select("device_id")
+    .eq("device_id", deviceId)
+    .maybeSingle();
+
+  if (deviceError) {
+    console.error("device_registry lookup failed:", deviceError.message);
+    return jsonResponse({ error: "Unknown device" }, 403);
+  }
+  if (!device) {
+    return jsonResponse({ error: "Unknown device" }, 403);
+  }
+
   let allRows: { entryid: string; latitude: number; longitude: number }[] = [];
   let offset = 0;
 
@@ -71,11 +85,8 @@ Deno.serve(async (req) => {
       .range(offset, offset + PAGE_SIZE - 1);
 
     if (error) {
-      console.error("Failed to fetch rows", error.message);
-      return jsonResponse(
-        { error: "Failed to fetch rows", detail: error.message },
-        500,
-      );
+      console.error("Failed to fetch rows:", error.message);
+      return jsonResponse({ error: "Failed to fetch rows" }, 500);
     }
 
     if (!data || data.length === 0) break;
