@@ -101,4 +101,5 @@ dependencies {
 
     // WorkManager
     implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
 }
