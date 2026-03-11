@@ -50,3 +50,14 @@ latex//structured_interview_forms/interview-form-standalone.fls
 .cursor/
 #SVGs
 AppIcon/
+
+# Android
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+*.iml
+*.hprof
+android/captures/
+android/app/release/
