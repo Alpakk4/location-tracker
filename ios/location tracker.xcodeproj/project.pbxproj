@@ -475,9 +475,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -508,9 +505,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -541,9 +535,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Pinglo";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "please plea";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = pleeease;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "i really really need it ";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

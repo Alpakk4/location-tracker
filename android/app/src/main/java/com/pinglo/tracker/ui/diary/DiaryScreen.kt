@@ -30,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -276,6 +277,14 @@ fun DiaryScreen(
             .toEpochMilli()
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = yesterdayMillis,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    val date = Instant.ofEpochMilli(utcTimeMillis)
+                        .atZone(ZoneId.of("UTC"))
+                        .toLocalDate()
+                    return !date.isAfter(yesterday)
+                }
+            },
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -296,12 +305,6 @@ fun DiaryScreen(
         ) {
             DatePicker(
                 state = datePickerState,
-                dateValidator = { millis ->
-                    val date = Instant.ofEpochMilli(millis)
-                        .atZone(ZoneId.of("UTC"))
-                        .toLocalDate()
-                    !date.isAfter(yesterday)
-                },
             )
         }
     }
