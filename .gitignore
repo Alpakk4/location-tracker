@@ -29,16 +29,16 @@ local_deno/
 #Data
 seed.sql
 #LaTeX
-latex/main.log
-latex/main.aux
-latex/main.out
-latex/main.toc
-latex/main.lof
-latex/main.lot
-latex/main.synctex.gz
-latex/main.fls
-latex/main.fdb_latexmk
-latex/main.blg
+latex/**/main.log
+latex/**/main.aux
+latex/**/main.out
+latex/**/main.toc
+latex/**/main.lof
+latex/**/main.lot
+latex/**/main.synctex.gz
+latex/**/main.fls
+latex/**/main.fdb_latexmk
+latex/**/main.blg
 # LaTex Subfolders
 latex//structured_interview_forms/interview-form-standalone.log
 latex//structured_interview_forms/interview-form-standalone.aux
