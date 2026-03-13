@@ -59,7 +59,9 @@ supabase/snippets/
 
 # Android
 android/local.properties
+android/local.dev.properties
 **/local.properties
+**/local.dev.properties
 android/.gradle/
 android/app/build/
 android/build/
