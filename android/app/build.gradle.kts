@@ -13,6 +13,11 @@ val localProperties = Properties().apply {
     if (file.exists()) load(file.inputStream())
 }
 
+val localDevProperties = Properties().apply {
+    val file = rootProject.file("local.dev.properties")
+    if (file.exists()) load(file.inputStream())
+}
+
 android {
     namespace = "com.pinglo.tracker"
     compileSdk = 35
@@ -25,10 +30,23 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
 
-        buildConfigField("String", "SUPABASE_API_KEY", "\"${localProperties.getProperty("SUPABASE_API_KEY", "")}\"")
-        buildConfigField("String", "SUPABASE_ENDPOINT", "\"${localProperties.getProperty("SUPABASE_ENDPOINT", "")}\"")
-        buildConfigField("String", "HOME_LOCK_PASSWORD", "\"${localProperties.getProperty("HOME_LOCK_PASSWORD", "")}\"")
+    flavorDimensions += "env"
+    productFlavors {
+        create("production") {
+            dimension = "env"
+            buildConfigField("String", "SUPABASE_API_KEY", "\"${localProperties.getProperty("SUPABASE_API_KEY", "")}\"")
+            buildConfigField("String", "SUPABASE_ENDPOINT", "\"${localProperties.getProperty("SUPABASE_ENDPOINT", "")}\"")
+            buildConfigField("String", "HOME_LOCK_PASSWORD", "\"${localProperties.getProperty("HOME_LOCK_PASSWORD", "")}\"")
+        }
+        create("localDev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            buildConfigField("String", "SUPABASE_API_KEY", "\"${localDevProperties.getProperty("SUPABASE_API_KEY", "")}\"")
+            buildConfigField("String", "SUPABASE_ENDPOINT", "\"${localDevProperties.getProperty("SUPABASE_ENDPOINT", "")}\"")
+            buildConfigField("String", "HOME_LOCK_PASSWORD", "\"${localDevProperties.getProperty("HOME_LOCK_PASSWORD", "")}\"")
+        }
     }
 
     buildTypes {
@@ -38,6 +56,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -78,6 +97,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.hilt.androidx.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // Coroutines
