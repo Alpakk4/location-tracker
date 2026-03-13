@@ -1072,21 +1072,6 @@ serve(async (req) => {
     // Note: uses original (unsmoothed) pings so journey positions reflect actual GPS data
     const journeys = segmentJourneys(allPings, selected);
 
-    // 5c. Generate synthetic red-herring visits and journeys for sensitivity/specificity analysis
-    const syntheticVisits = generateSyntheticVisits(selected, date);
-    const allVisits = [...selected, ...syntheticVisits]
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-    const syntheticJourneys = generateSyntheticJourneys(allVisits, syntheticVisits);
-    const allJourneys = [...journeys, ...syntheticJourneys]
-      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
-
-    // Track which IDs are synthetic for DB flagging (not exposed to iOS)
-    const syntheticVisitIds = new Set(syntheticVisits.map(v => v.entryid));
-    const syntheticJourneyIds = new Set(syntheticJourneys.map(j => j.journey_id));
-
-    console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length} real + ${syntheticVisits.length} synthetic) and ${journeys.length} real + ${syntheticJourneys.length} synthetic journeys`);
-
     // 6. Pre-populate normalized diary tables (diaries -> diary_visits -> diary_visit_entries)
 
     // 6a. Upsert the diary row for this device+date
@@ -1102,6 +1087,54 @@ serve(async (req) => {
     if (diaryError || !diaryRow) {
       console.error("Diary upsert error:", diaryError);
       // Non-fatal: still return clusters to iOS even if DB write fails
+    }
+
+    // 5c. Conditionally generate synthetic red-herring visits and journeys.
+    //     Only inject when new true visits are suspected (i.e. a real visit in
+    //     this run was not present in the previous run for this diary).
+    let allVisits: ClusterResult[];
+    let allJourneys: JourneyResult[];
+    let syntheticVisitIds: Set<string>;
+    let syntheticJourneyIds: Set<string>;
+
+    // Query previous real visit IDs so we can detect new true visits
+    let previousRealVisitIds = new Set<string>();
+    if (diaryRow) {
+      const { data: prevVisits } = await supabase
+        .from('diary_visits')
+        .select('visit_id')
+        .eq('diary_id', diaryRow.id)
+        .eq('is_synthetic', false);
+
+      if (prevVisits) {
+        previousRealVisitIds = new Set(prevVisits.map((v: { visit_id: string }) => v.visit_id));
+      }
+    }
+
+    const hasNewTrueVisits = selected.some(c => !previousRealVisitIds.has(c.entryid));
+
+    if (hasNewTrueVisits) {
+      const syntheticVisits = generateSyntheticVisits(selected, date);
+      allVisits = [...selected, ...syntheticVisits]
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      const syntheticJourneys = generateSyntheticJourneys(allVisits, syntheticVisits);
+      allJourneys = [...journeys, ...syntheticJourneys]
+        .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+
+      syntheticVisitIds = new Set(syntheticVisits.map(v => v.entryid));
+      syntheticJourneyIds = new Set(syntheticJourneys.map(j => j.journey_id));
+
+      console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length} real + ${syntheticVisits.length} synthetic) and ${journeys.length} real + ${syntheticJourneys.length} synthetic journeys`);
+    } else {
+      allVisits = [...selected]
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      allJourneys = [...journeys]
+        .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+      syntheticVisitIds = new Set();
+      syntheticJourneyIds = new Set();
+
+      console.info(`Clustered ${allPings.length} pings into ${allClusters.length} visits (returning ${selected.length} real, no new true visits — synthetics skipped) and ${journeys.length} journeys`);
     }
 
     if (diaryRow) {
