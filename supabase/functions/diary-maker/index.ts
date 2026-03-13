@@ -298,74 +298,131 @@ function smoothPings(pings: RawPing[]): RawPing[] {
 }
 
 // ---------------------------------------------------------------------------
-// Clustering (centroid-anchored)
+// Clustering (ST-DBSCAN)
 // ---------------------------------------------------------------------------
 
-const CLUSTER_RADIUS_M = 50; // max distance from centroid to remain in cluster
+const ST_EPS_SPATIAL_M   = 50;              // eps1: max spatial neighbour distance (metres)
+const ST_EPS_TEMPORAL_MS = 30 * 60 * 1000;  // eps2: max temporal neighbour distance (ms)
+const ST_MIN_PTS         = 2;               // minimum neighbours (incl. self) to be a core point
 
-/** Compute the centroid of a set of pings' positions as an average PositionFromHome.
- *  Averages Cartesian offsets (x_m, y_m) when available; falls back to polar averaging. */
-function clusterCentroid(pings: RawPing[]): PositionFromHome {
-  // Prefer Cartesian offsets for numerically stable averaging
-  if (pings[0].position_from_home.x_m != null && pings[0].position_from_home.y_m != null) {
-    let sx = 0, sy = 0;
-    for (const p of pings) {
-      sx += p.position_from_home.x_m!;
-      sy += p.position_from_home.y_m!;
+/**
+ * ST-DBSCAN: density-based spatiotemporal clustering.
+ *
+ * Pings must be sorted by created_at ascending on entry. The temporal sort
+ * order is exploited for early-exit neighbour search (scan outward from i and
+ * break when |Δt| > eps2).
+ *
+ * Returns an array of ping groups. Each noise ping becomes its own
+ * single-element group so every ping appears in exactly one group.
+ * Groups are sorted internally by created_at.
+ */
+function stDbscan(
+  pings: RawPing[],
+  eps1_m: number,
+  eps2_ms: number,
+  minPts: number,
+): RawPing[][] {
+  const n = pings.length;
+  if (n === 0) return [];
+
+  const UNCLASSIFIED = -1;
+  const NOISE = 0;
+
+  const timestamps = pings.map(p => new Date(p.created_at).getTime());
+  const labels = new Int32Array(n).fill(UNCLASSIFIED);
+
+  /** Return indices of all points within eps1/eps2 of point i (including i). */
+  function regionQuery(i: number): number[] {
+    const neighbours: number[] = [];
+    const ti = timestamps[i];
+
+    // Scan backward from i
+    for (let j = i; j >= 0; j--) {
+      if (ti - timestamps[j] > eps2_ms) break;
+      if (distanceBetween(pings[i].position_from_home, pings[j].position_from_home) <= eps1_m) {
+        neighbours.push(j);
+      }
     }
-    const cx = sx / pings.length;
-    const cy = sy / pings.length;
-    const dist = Math.sqrt(cx * cx + cy * cy);
-    const bear = (Math.atan2(cx, cy) * 180 / Math.PI + 360) % 360;
-    return { distance: dist, bearing: bear, x_m: cx, y_m: cy };
+    // Scan forward from i+1
+    for (let j = i + 1; j < n; j++) {
+      if (timestamps[j] - ti > eps2_ms) break;
+      if (distanceBetween(pings[i].position_from_home, pings[j].position_from_home) <= eps1_m) {
+        neighbours.push(j);
+      }
+    }
+    return neighbours;
   }
-  // Fallback: convert polar to local Cartesian, average, convert back
-  let sx = 0, sy = 0;
-  for (const p of pings) {
-    const b = p.position_from_home.bearing * Math.PI / 180;
-    sx += p.position_from_home.distance * Math.sin(b);
-    sy += p.position_from_home.distance * Math.cos(b);
+
+  let clusterId = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (labels[i] !== UNCLASSIFIED) continue;
+
+    const neighbours = regionQuery(i);
+
+    if (neighbours.length < minPts) {
+      labels[i] = NOISE;
+      continue;
+    }
+
+    // Start a new cluster
+    clusterId++;
+    labels[i] = clusterId;
+
+    const queue = [...neighbours];
+    const queued = new Set(neighbours);
+    queued.add(i);
+
+    while (queue.length > 0) {
+      const j = queue.pop()!;
+
+      if (labels[j] === NOISE) {
+        labels[j] = clusterId;
+      }
+      if (labels[j] !== UNCLASSIFIED && labels[j] !== clusterId) continue;
+      labels[j] = clusterId;
+
+      const jNeighbours = regionQuery(j);
+      if (jNeighbours.length >= minPts) {
+        for (const k of jNeighbours) {
+          if (!queued.has(k)) {
+            queued.add(k);
+            queue.push(k);
+          }
+        }
+      }
+    }
   }
-  const cx = sx / pings.length;
-  const cy = sy / pings.length;
-  const dist = Math.sqrt(cx * cx + cy * cy);
-  const bear = (Math.atan2(cx, cy) * 180 / Math.PI + 360) % 360;
-  return { distance: dist, bearing: bear };
+
+  // Collect groups by label; noise pings each become a single-element group
+  const groups: RawPing[][] = [];
+  const clusterGroups = new Map<number, RawPing[]>();
+
+  for (let i = 0; i < n; i++) {
+    const lbl = labels[i];
+    if (lbl === NOISE) {
+      groups.push([pings[i]]);
+    } else {
+      if (!clusterGroups.has(lbl)) clusterGroups.set(lbl, []);
+      clusterGroups.get(lbl)!.push(pings[i]);
+    }
+  }
+
+  for (const group of clusterGroups.values()) {
+    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    groups.push(group);
+  }
+
+  // Sort groups by earliest ping timestamp for deterministic output order
+  groups.sort((a, b) => new Date(a[0].created_at).getTime() - new Date(b[0].created_at).getTime());
+
+  return groups;
 }
 
-const TIME_GAP_BREAK_MS = 30 * 60 * 1000; // If two consecutive pings are more than 30 minutes apart, they are to be considered as from different clusters.
-function clusterPings(pings: RawPing[]): ClusterResult[] {
-  if (pings.length === 0) return [];
-
-  const clusters: RawPing[][] = [];
-  let current: RawPing[] = [pings[0]];
-  let centroid: PositionFromHome = pings[0].position_from_home;
-
-  for (let i = 1; i < pings.length; i++) {
-    const curr = pings[i];
-    const prev = pings[i - 1];
-    const dist = distanceBetween(centroid, curr.position_from_home);
-    const time_diff = new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-    
-
-    if (dist <= CLUSTER_RADIUS_M && time_diff < TIME_GAP_BREAK_MS) {
-      current.push(curr);
-      // Update running centroid to include the new ping
-      centroid = clusterCentroid(current);
-    } else {
-      clusters.push(current);
-      current = [curr];
-      centroid = curr.position_from_home;
-    }
-  }
-  clusters.push(current); // finalise last cluster
-
-  // Build representative entries
-  return clusters.map((pingsInCluster) => {
-    // Multi-signal confidence scoring (replaces old min-based approach)
+function buildClusterResults(groups: RawPing[][]): ClusterResult[] {
+  return groups.map((pingsInCluster) => {
     const { visit_confidence, visit_type } = computeClusterConfidence(pingsInCluster);
 
-    // Representative fields
     const firstPing = pingsInCluster[0];
     const lastPing = pingsInCluster[pingsInCluster.length - 1];
 
@@ -373,10 +430,8 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
     const categories = pingsInCluster.map(p => getCategory(p.primary_type));
     const motionTypes = pingsInCluster.map(p => p.motion_type);
 
-    // Union of all other_types (deduplicated)
     const allOtherTypes = [...new Set(pingsInCluster.flatMap(p => p.other_types))];
 
-    // Most common motion_type (compare by serialised JSON key)
     const motionMode = mode(motionTypes.map(m => JSON.stringify(m)));
 
     const primaryMode = mode(primaryTypes);
@@ -398,6 +453,14 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
       ping_count: pingsInCluster.length,
     };
   });
+}
+
+function clusterPings(pings: RawPing[]): ClusterResult[] {
+  if (pings.length === 0) return [];
+
+  // const groups = groupPings(pings); // legacy centroid-anchored clustering
+  const groups = stDbscan(pings, ST_EPS_SPATIAL_M, ST_EPS_TEMPORAL_MS, ST_MIN_PTS);
+  return buildClusterResults(groups);
 }
 
 // ---------------------------------------------------------------------------
