@@ -230,14 +230,14 @@ class LocationService : Service() {
     }
 
     private fun buildLocationRequest(motion: String): LocationRequest {
-        val minDistance = when (motion) {
-            "STILL" -> 20f
-            "WALKING", "RUNNING" -> 10f
-            "CYCLING" -> 15f
-            "AUTOMOTIVE" -> 50f
-            else -> 15f
+        val (priority, intervalMs, minDistance) = when (motion) {
+            "STILL" -> Triple(Priority.PRIORITY_LOW_POWER, 60_000L, 20f)
+            "WALKING", "RUNNING" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 10f)
+            "CYCLING" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 15f)
+            "AUTOMOTIVE" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 50f)
+            else -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 15f)
         }
-        return LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000)
+        return LocationRequest.Builder(priority, intervalMs)
             .setMinUpdateDistanceMeters(minDistance)
             .build()
     }

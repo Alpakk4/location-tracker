@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +22,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -40,11 +40,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.pinglo.tracker.R
 import com.pinglo.tracker.config.ConfigurationKeys
 
 private const val PREFS_NAME = "pinglo_prefs"
@@ -84,11 +87,11 @@ private fun LocationStep(onNext: () -> Unit) {
     ) {
         Spacer(Modifier.weight(1f))
 
-        Icon(
-            imageVector = Icons.Filled.LocationOn,
-            contentDescription = null,
-            modifier = Modifier.size(120.dp),
-            tint = MaterialTheme.colorScheme.primary,
+        Image(
+            painter = painterResource(R.drawable.ic_pinglo_mascot),
+            contentDescription = "Pinglo",
+            modifier = Modifier.size(200.dp),
+            contentScale = ContentScale.Fit,
         )
 
         Spacer(Modifier.height(24.dp))

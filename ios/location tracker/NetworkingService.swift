@@ -12,7 +12,7 @@ class NetworkingService {
     private let defaults = UserDefaults.standard
     private let manager = CLLocationManager()
 
-    private static let retryDelays: [TimeInterval] = [60, 300, 900]
+    private static let retryDelays: [TimeInterval] = [60, 120, 240]
     private static let pendingPingsKey = "pendingPings"
 
     private static let iso8601Formatter: ISO8601DateFormatter = {
