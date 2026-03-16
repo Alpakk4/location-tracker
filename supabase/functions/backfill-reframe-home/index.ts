@@ -13,6 +13,16 @@ const PAGE_SIZE = 1000;
 const BATCH_SIZE = 50;
 const HOME_BOUNDARY_METRES = 30;
 
+const DEFAULT_HOME_LAT_FALLBACK = 51.503349370657986;
+const DEFAULT_HOME_LONG_FALLBACK = -0.0868719398915672;
+
+interface PositionFromHome {
+  distance: number;
+  bearing: number;
+  x_m: number;
+  y_m: number;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
@@ -74,13 +84,35 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Unknown device" }, 403);
   }
 
-  let allRows: { entryid: string; latitude: number; longitude: number }[] = [];
+  // Resolve the old (default) home coordinates that existing pings are relative to
+  const oldHomeLat = (() => {
+    const v = Deno.env.get("DEFAULT_HOME_LAT");
+    if (v == null || v === "") return DEFAULT_HOME_LAT_FALLBACK;
+    const n = parseFloat(v);
+    return isFinite(n) ? n : DEFAULT_HOME_LAT_FALLBACK;
+  })();
+  const oldHomeLong = (() => {
+    const v = Deno.env.get("DEFAULT_HOME_LONG");
+    if (v == null || v === "") return DEFAULT_HOME_LONG_FALLBACK;
+    const n = parseFloat(v);
+    return isFinite(n) ? n : DEFAULT_HOME_LONG_FALLBACK;
+  })();
+
+  // Vector from new home to old home — added to each ping's old offsets
+  const homeOffset = calculateDisplacement(
+    user_home_lat,
+    user_home_long,
+    oldHomeLat,
+    oldHomeLong,
+  );
+
+  let allRows: { entryid: string; position_from_home: PositionFromHome | null }[] = [];
   let offset = 0;
 
   while (true) {
     const { data, error } = await supabase
       .from("locationsvisitednew")
-      .select("entryid, latitude, longitude")
+      .select("entryid, position_from_home")
       .eq("deviceid", deviceId)
       .range(offset, offset + PAGE_SIZE - 1);
 
@@ -106,14 +138,23 @@ Deno.serve(async (req) => {
   for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
     const batch = allRows.slice(i, i + BATCH_SIZE);
     const updates = batch
-      .filter((row) => row.latitude != null && row.longitude != null)
+      .filter((row) => row.position_from_home?.x_m != null && row.position_from_home?.y_m != null)
       .map((row) => {
-        const pfh = calculateDisplacement(
-          user_home_lat,
-          user_home_long,
-          row.latitude,
-          row.longitude,
+        const old = row.position_from_home!;
+        const newX = homeOffset.x_m + old.x_m;
+        const newY = homeOffset.y_m + old.y_m;
+        const newDistance = parseFloat(Math.sqrt(newX * newX + newY * newY).toFixed(2));
+        const newBearing = parseFloat(
+          ((Math.atan2(newX, newY) * 180 / Math.PI + 360) % 360).toFixed(4),
         );
+
+        const pfh: PositionFromHome = {
+          distance: newDistance,
+          bearing: newBearing,
+          x_m: parseFloat(newX.toFixed(2)),
+          y_m: parseFloat(newY.toFixed(2)),
+        };
+
         const payload: Record<string, unknown> = { position_from_home: pfh };
         if (pfh.distance <= HOME_BOUNDARY_METRES) {
           payload.primary_type = "home";

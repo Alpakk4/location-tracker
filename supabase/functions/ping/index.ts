@@ -193,17 +193,30 @@ Deno.serve(async (req) => {
   const primary_type = isAtHome ? "home" : (firstPlace?.primaryType ?? "Unknown");
   const place_category = primary_type === "home" ? "Home" : getCategory(primary_type);
 
+  const hashedPlaceId = firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown";
+
+  if (firstPlace?.id) {
+    const { error: placeError } = await supabase
+      .from("places")
+      .upsert({
+        hashed_google_id: hashedPlaceId,
+        place_name: firstPlace.displayName?.text ?? null,
+        primary_type: firstPlace.primaryType ?? null,
+        other_types: firstPlace.types ?? [],
+      }, { onConflict: "hashed_google_id" });
+    if (placeError) {
+      console.warn("places upsert failed:", placeError.message);
+    }
+  }
+
   const db_body: Record<string, unknown> = {
-    latitude: lat,
-    longitude: long,
     deviceid: uid,
     motion_type: motion,
-    closest_place: firstPlace?.displayName?.text ?? "Unknown",
     primary_type,
     place_category,
-    other_types: firstPlace?.types ?? [], 
+    other_types: firstPlace?.types ?? [],
     possible_primary_types,
-    placeid: firstPlace?.id ? await idHasher(firstPlace.id) : "Unknown",
+    placeid: hashedPlaceId,
     position_from_home: displacement,
     horizontal_accuracy: horizontal_accuracy ?? null,
     distance_user_to_place: primary_place_distance,
