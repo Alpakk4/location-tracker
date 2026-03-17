@@ -351,6 +351,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
@@ -539,6 +540,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
@@ -572,6 +574,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
