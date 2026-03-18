@@ -1,9 +1,34 @@
-\documentclass[11pt]{article}
+\documentclass[12pt]{article}
 \usepackage[a4paper,margin=2.1cm]{geometry}
 \usepackage[dvipsnames]{xcolor}
+\usepackage{microtype}
 \usepackage{parskip}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\renewcommand{\familydefault}{\sfdefault}
 \usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=MidnightBlue,
+  urlcolor=MidnightBlue,
+  citecolor=MidnightBlue
+}
 
+\setlength{\leftmargini}{1.8em}
+\setlength{\leftmarginii}{1.6em}
+\setlength{\itemsep}{0.25\baselineskip}
+\setlength{\topsep}{0.25\baselineskip}
+
+\newcommand{\Callout}[2]{%
+  \par\medskip
+  \noindent\fcolorbox{black!25}{black!2}{%
+    \begin{minipage}{0.97\linewidth}
+      \textbf{#1}\par\medskip
+      #2
+    \end{minipage}%
+  }%
+  \par\medskip
+}
 
 \begin{document}
 \title{Using geolocation data to measure participation in healthy adults - validation and exploration of proxy summary measures:
@@ -12,11 +37,14 @@ Onboarding and Consent}
 \date{}
 \maketitle
 
+\tableofcontents
+\vspace{0.75\baselineskip}
+
 \section{Study description}
 \input{studydescription}
 
 \section{Consent}
-\input{consent})
+\input{consent}
 
 \section{Onboarding}
 \input{onboarding}
