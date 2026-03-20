@@ -5,6 +5,8 @@
 \usepackage{parskip}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
+\usepackage{float}
+\usepackage{pdfpages}
 \renewcommand{\familydefault}{\sfdefault}
 \usepackage{hyperref}
 \hypersetup{
@@ -45,9 +47,12 @@ Onboarding and Consent}
 
 \section{Consent}
 \input{consent}
+\includepdf[pages=-]{../ConsentFormFillable.pdf}
 
 \section{Onboarding}
 \input{onboarding}
+
 \section{Walkthroughs}
+\input{walkthroughs}
 
 \end{document}
