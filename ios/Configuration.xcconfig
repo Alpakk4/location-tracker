@@ -1,0 +1,16 @@
+//
+//  Configuration.xcconfig
+//  location tracker
+//
+//  Created by Alex Skondras on 03/12/2025.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://developer.apple.com/documentation/xcode/adding-a-build-configuration-file-to-your-project
+//supabase endpoint
+ENDPOINT = https:/$()/vheezzgrwrtclkyqhayz.supabase.co/functions/v1/ping
+//supabaseapikey
+API_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZWV6emdyd3J0Y2xreXFoYXl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMDE3MjksImV4cCI6MjA3OTc3NzcyOX0.FYbwQYU7kkz2kBsZKKE9dbyTzxt7x2cA4E_vfvx0wb0
+//Admin Password to unlock sethome feature
+HOME_LOCK_PASSWORD = unlock_set_home_007
+

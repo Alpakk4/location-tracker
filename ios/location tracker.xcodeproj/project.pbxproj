@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0CD86B9D2F6D9EED003BD66C /* Configuration.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 0CD86B9C2F6D9EED003BD66C /* Configuration.xcconfig */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		588086BB2E65A76E005096EF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,9 +28,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
-		0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
 		0CA00001304000000000A001 /* Configuration.LocalSimulator.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.LocalSimulator.xcconfig; sourceTree = "<group>"; };
+		0CD86B9C2F6D9EED003BD66C /* Configuration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration.xcconfig; sourceTree = "<group>"; };
 		588086AD2E65A76C005096EF /* location tracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "location tracker.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		588086BA2E65A76E005096EF /* location trackerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "location trackerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		588086C42E65A76E005096EF /* location trackerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "location trackerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,13 +81,12 @@
 		588086A42E65A76C005096EF = {
 			isa = PBXGroup;
 			children = (
-				0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */,
+				0CD86B9C2F6D9EED003BD66C /* Configuration.xcconfig */,
 				0CA00001304000000000A001 /* Configuration.LocalSimulator.xcconfig */,
 				588086AF2E65A76C005096EF /* location tracker */,
 				588086BD2E65A76E005096EF /* location trackerTests */,
 				588086C72E65A76E005096EF /* location trackerUITests */,
 				588086AE2E65A76C005096EF /* Products */,
-				0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -218,6 +220,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0CD86B9D2F6D9EED003BD66C /* Configuration.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -409,7 +412,7 @@
 		};
 		588086CC2E65A76E005096EF /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 0C261E422F4F3E4A009D70D5 /* Configuration.xcconfig */;
+			baseConfigurationReference = 0CD86B9C2F6D9EED003BD66C /* Configuration.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -473,7 +476,7 @@
 		};
 		588086CD2E65A76E005096EF /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 0C261DFE2F4F09EB009D70D5 /* Configuration.xcconfig */;
+			baseConfigurationReference = 0CD86B9C2F6D9EED003BD66C /* Configuration.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
