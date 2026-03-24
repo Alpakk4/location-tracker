@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <rect width="1024" height="500" fill="#5dafa7"/>
+  <text
+    x="512"
+    y="275"
+    fill="#ffffff"
+    font-family="Avenir Next, Avenir, Helvetica Neue, Arial, sans-serif"
+    font-size="150"
+    font-weight="700"
+    text-anchor="middle"
+    dominant-baseline="middle">PingLo</text>
+</svg>
