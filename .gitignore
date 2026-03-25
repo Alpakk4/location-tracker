@@ -72,3 +72,8 @@ android/.idea/
 *.hprof
 android/captures/
 android/app/release/
+
+# Test output from clustering comparison scripts
+scripts/output/
+scripts/samplepings.csv
+scripts/sample-inserts.sql
