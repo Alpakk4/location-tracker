@@ -11,13 +11,13 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>${INFOPLIST_NS_LOCATION_ALWAYS_AND_WHEN_IN_USE}</string>
+	<string>$(INFOPLIST_NS_LOCATION_ALWAYS_AND_WHEN_IN_USE)</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>${INFOPLIST_NS_LOCATION_ALWAYS}</string>
+	<string>$(INFOPLIST_NS_LOCATION_ALWAYS)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>${INFOPLIST_NS_LOCATION_WHEN_IN_USE}</string>
+	<string>$(INFOPLIST_NS_LOCATION_WHEN_IN_USE)</string>
 	<key>NSMotionUsageDescription</key>
-	<string>${INFOPLIST_NS_MOTION}</string>
+	<string>$(INFOPLIST_NS_MOTION)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

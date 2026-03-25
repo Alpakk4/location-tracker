@@ -1,0 +1,26 @@
+//
+//  Configuration.xcconfig
+//  location tracker
+//
+//  Created by Alex Skondras on 03/12/2025.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://developer.apple.com/documentation/xcode/adding-a-build-configuration-file-to-your-project
+//supabase endpoint
+ENDPOINT = https:/$()/vheezzgrwrtclkyqhayz.supabase.co/functions/v1
+//supabaseapikey
+API_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZWV6emdyd3J0Y2xreXFoYXl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NTIwMDksImV4cCI6MjA4NzIxMjAwOX0.S06F5jqAbcISZujn7MSLSizvQPwtDI9j-MfLN4wmyB4
+//Admin Password to unlock sethome feature
+HOME_LOCK_PASSWORD = unlock_set_home_007
+
+// App Store privacy purpose strings (referenced by ios/location-tracker-Info.plist)
+
+// Values must be quoted because they include spaces.
+INFOPLIST_NS_LOCATION_WHEN_IN_USE = "Pinglo uses your location to record where you go and to build your daily travel diary. For example, we collect GPS points to cluster nearby readings into places you visited and segments for trips between them."
+INFOPLIST_NS_LOCATION_ALWAYS = "Pinglo uses your location in the background to record travel for your daily diary when the app is not open. For example, we collect location updates while your phone is locked so your diary can include stops and trips you made throughout the day."
+
+INFOPLIST_NS_LOCATION_ALWAYS_AND_WHEN_IN_USE = "Pinglo uses your location while you use the app and in the background to record where you go and build your daily travel diary. For example, we collect GPS points when the app is in the background so we can infer places you stopped and routes you took for the day you review and confirm later."
+
+INFOPLIST_NS_MOTION = "Pinglo uses motion and fitness data to recognize how you move between places. For example, we use activity recognition to help label whether a trip was walked, cycled, or driven when building your travel diary."
+
