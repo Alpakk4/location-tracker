@@ -12,7 +12,7 @@ class NetworkingService {
     private let defaults = UserDefaults.standard
     private let manager = CLLocationManager()
 
-    private static let retryDelays: [TimeInterval] = [60, 120, 240]
+    private static let retryDelays: [TimeInterval] = PingloTimingConfig.retryDelays
     private static let pendingPingsKey = "pendingPings"
 
     private static let iso8601Formatter: ISO8601DateFormatter = {
@@ -57,14 +57,7 @@ class NetworkingService {
     }
 
     static func throttleInterval(for activity: String) -> TimeInterval {
-        switch activity {
-        case "WALKING":    return 120
-        case "RUNNING":    return 120
-        case "CYCLING":    return 240
-        case "AUTOMOTIVE": return 600
-        case "STILL":      return 1200
-        default:           return 300
-        }
+        PingloTimingConfig.throttleInterval(for: activity)
     }
 
     func sendLocation(_ location: CLLocation, activity: String, confidence: String, force: Bool = false) {

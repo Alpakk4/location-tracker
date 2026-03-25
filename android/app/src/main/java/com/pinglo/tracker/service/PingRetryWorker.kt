@@ -6,6 +6,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.pinglo.tracker.BuildConfig
+import com.pinglo.tracker.config.PingloTimingConfig
 import com.pinglo.tracker.model.RequestPayload
 import com.squareup.moshi.Moshi
 import dagger.assisted.Assisted
@@ -20,8 +21,8 @@ class PingRetryWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        if (runAttemptCount >= MAX_RETRIES) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "Max retries ($MAX_RETRIES) exhausted, dropping ping")
+        if (runAttemptCount >= PingloTimingConfig.MAX_PING_RETRIES) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "Max retries (${PingloTimingConfig.MAX_PING_RETRIES}) exhausted, dropping ping")
             return Result.failure()
         }
 
@@ -59,6 +60,5 @@ class PingRetryWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "PingRetryWorker"
         const val KEY_PAYLOAD = "payload_json"
-        const val MAX_RETRIES = 3
     }
 }

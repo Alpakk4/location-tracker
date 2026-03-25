@@ -21,21 +21,18 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Geofence properties (visit boundary detection)
     private var currentGeofence: CLCircularRegion?
-    private let geofenceRadius: CLLocationDistance = 75.0
+    private let geofenceRadius: CLLocationDistance = PingloTimingConfig.geofenceRadius
     private static let geofenceIdentifier = "current-visit"
     /// Tracks whether the previous motion update was STILL, to detect transitions.
     private var wasStationary = false
 
     /// Only send pings when horizontal accuracy is within this threshold (meters).
-    private let maxHorizontalAccuracyForPing: CLLocationAccuracy = 50
+    private let maxHorizontalAccuracyForPing: CLLocationAccuracy = PingloTimingConfig.maxHorizontalAccuracy
 
     // MARK: - Distance-based ping filtering
     private var lastPingLocation: CLLocation?
 
-    private static let pingDistanceThresholds: [String: CLLocationDistance] = [
-        "STILL": 50, "WALKING": 20, "RUNNING": 20,
-        "CYCLING": 30, "AUTOMOTIVE": 100, "UNKNOWN": 30
-    ]
+    private static let pingDistanceThresholds = PingloTimingConfig.pingDistanceThresholds
 
     // MARK: - Motion debouncer state
 
@@ -46,18 +43,18 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     private var motionWindow: [MotionSample] = []
-    private let windowDuration: TimeInterval = 40
+    private let windowDuration: TimeInterval = PingloTimingConfig.motionWindowDuration
     private var smoothedScores: [String: Double] = ["STILL": 1.0]
-    private let smoothingAlpha: Double = 0.3
-    private let hysteresisThreshold: Double = 0.15
+    private let smoothingAlpha: Double = PingloTimingConfig.motionSmoothingAlpha
+    private let hysteresisThreshold: Double = PingloTimingConfig.motionHysteresisThreshold
 
     private var stabilityCandidate: String?
     private var stabilityCandidateStart: Date?
-    private let stabilityDuration: TimeInterval = 5.0
+    private let stabilityDuration: TimeInterval = PingloTimingConfig.motionStabilityDuration
     private var stabilityCheckTimer: Timer?
 
     private var decayTimer: Timer?
-    private let decayTimeout: TimeInterval = 75
+    private let decayTimeout: TimeInterval = PingloTimingConfig.motionDecayTimeout
 
     // MARK: - Per-mode heartbeat
     private var heartbeatTimer: Timer?
@@ -68,7 +65,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = true
-        manager.distanceFilter = 20
+        manager.distanceFilter = PingloTimingConfig.distanceFilter(for: "STILL")
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
@@ -320,7 +317,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Heartbeats use `force: false` so they're still subject to the NetworkingService throttle gate.
     private func startHeartbeat(for motion: String) {
         stopHeartbeat()
-        let interval = NetworkingService.throttleInterval(for: motion)
+        let interval = PingloTimingConfig.heartbeatInterval(for: motion)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
@@ -390,13 +387,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Values are set smaller than the per-mode ping-distance thresholds so the OS delivers
     /// enough callbacks for the app-level distance gate to work.
     private func updateDistanceFilter(for motion: String) {
-        switch motion {
-        case "STILL":              manager.distanceFilter = 20
-        case "WALKING", "RUNNING": manager.distanceFilter = 10
-        case "CYCLING":            manager.distanceFilter = 15
-        case "AUTOMOTIVE":         manager.distanceFilter = 50
-        default:                   manager.distanceFilter = 15
-        }
+        manager.distanceFilter = PingloTimingConfig.distanceFilter(for: motion)
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -413,7 +404,8 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
         let accuracyOk = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy <= maxHorizontalAccuracyForPing
         guard accuracyOk else { return }
 
-        let threshold = Self.pingDistanceThresholds[currentMotion] ?? 30
+        let threshold = Self.pingDistanceThresholds[currentMotion]
+            ?? Self.pingDistanceThresholds["UNKNOWN"]!
         if let lastPing = lastPingLocation, loc.distance(from: lastPing) < threshold {
             return
         }

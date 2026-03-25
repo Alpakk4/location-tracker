@@ -98,7 +98,7 @@ struct ContentView: View {
         pauseTask?.cancel()
         
         // Set pause end time to 25 minutes from now
-        let endTime = Date().addingTimeInterval(25 * 60) // 25 minutes = 1500 seconds
+        let endTime = Date().addingTimeInterval(PingloTimingConfig.pauseDuration)
         pauseEndTime = endTime
         
         // Store pause end time in UserDefaults for persistence
@@ -113,7 +113,7 @@ struct ContentView: View {
         // Create async task to auto-resume after 25 minutes
         pauseTask = Task { @MainActor in
             do {
-                try await Task.sleep(nanoseconds: UInt64(25 * 60 * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(PingloTimingConfig.pauseDuration * 1_000_000_000))
                 // Check if task was cancelled
                 if !Task.isCancelled {
                     cancelPause()

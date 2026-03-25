@@ -26,8 +26,8 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import com.pinglo.tracker.BuildConfig
+import com.pinglo.tracker.config.PingloTimingConfig
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,7 +51,6 @@ class LocationService : Service() {
         private const val REQUEST_CODE_ACTIVITY = 100
         private const val REQUEST_CODE_GEOFENCE = 101
         private const val GEOFENCE_ID = "current-visit"
-        private const val GEOFENCE_RADIUS_M = 75f
 
         private val _currentMotion = MutableStateFlow("STILL")
         val currentMotion = _currentMotion.asStateFlow()
@@ -65,10 +64,7 @@ class LocationService : Service() {
         private val _isRunning = MutableStateFlow(false)
         val isRunning = _isRunning.asStateFlow()
 
-        private val pingDistanceThresholds = mapOf(
-            "STILL" to 50f, "WALKING" to 20f, "RUNNING" to 20f,
-            "CYCLING" to 30f, "AUTOMOTIVE" to 100f, "UNKNOWN" to 30f,
-        )
+        private val pingDistanceThresholds = PingloTimingConfig.pingDistanceThresholds
     }
 
     private fun hasForegroundLocationPermission(): Boolean {
@@ -112,21 +108,21 @@ class LocationService : Service() {
     )
 
     private val motionWindow = mutableListOf<MotionSample>()
-    private val windowDuration = 40_000L
+    private val windowDuration = PingloTimingConfig.MOTION_WINDOW_DURATION_MS
     private val smoothedScores = mutableMapOf<String, Double>("STILL" to 1.0)
-    private val smoothingAlpha = 0.3
-    private val hysteresisThreshold = 0.15
+    private val smoothingAlpha = PingloTimingConfig.MOTION_SMOOTHING_ALPHA
+    private val hysteresisThreshold = PingloTimingConfig.MOTION_HYSTERESIS_THRESHOLD
 
     private var stabilityCandidate: String? = null
     private var stabilityCandidateStart = 0L
-    private val stabilityDuration = 5_000L
-    private val decayTimeout = 75_000L
+    private val stabilityDuration = PingloTimingConfig.MOTION_STABILITY_DURATION_MS
+    private val decayTimeout = PingloTimingConfig.MOTION_DECAY_TIMEOUT_MS
 
     // -- Tracking state ------------------------------------------------------------
 
     private var wasStationary = false
     private var lastPingLocation: Location? = null
-    private val maxHorizontalAccuracy = 50f
+    private val maxHorizontalAccuracy = PingloTimingConfig.MAX_HORIZONTAL_ACCURACY_M
     private var hasActiveGeofence = false
     private var backgroundLocationAllowed = false
     private var isTracking = false
@@ -226,7 +222,7 @@ class LocationService : Service() {
             )
             try {
                 ActivityRecognition.getClient(this)
-                    .requestActivityUpdates(5_000, activityPendingIntent!!)
+                    .requestActivityUpdates(PingloTimingConfig.ACTIVITY_RECOGNITION_INTERVAL_MS, activityPendingIntent!!)
             } catch (e: SecurityException) {
                 if (BuildConfig.DEBUG) Log.w(TAG, "requestActivityUpdates failed: ${e.message}")
             }
@@ -273,7 +269,8 @@ class LocationService : Service() {
 
                 if (loc.accuracy < 0 || loc.accuracy > maxHorizontalAccuracy) return
 
-                val threshold = pingDistanceThresholds[_currentMotion.value] ?: 30f
+                val threshold = pingDistanceThresholds[_currentMotion.value]
+                    ?: pingDistanceThresholds.getValue("UNKNOWN")
                 val prev = lastPingLocation
                 if (prev != null && loc.distanceTo(prev) < threshold) return
 
@@ -287,15 +284,9 @@ class LocationService : Service() {
     }
 
     private fun buildLocationRequest(motion: String): LocationRequest {
-        val (priority, intervalMs, minDistance) = when (motion) {
-            "STILL" -> Triple(Priority.PRIORITY_LOW_POWER, 60_000L, 20f)
-            "WALKING", "RUNNING" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 10f)
-            "CYCLING" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 15f)
-            "AUTOMOTIVE" -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 50f)
-            else -> Triple(Priority.PRIORITY_HIGH_ACCURACY, 10_000L, 15f)
-        }
-        return LocationRequest.Builder(priority, intervalMs)
-            .setMinUpdateDistanceMeters(minDistance)
+        val params = PingloTimingConfig.locationRequestParams(motion)
+        return LocationRequest.Builder(params.priority, params.intervalMs)
+            .setMinUpdateDistanceMeters(params.minDistanceMeters)
             .build()
     }
 
@@ -474,7 +465,7 @@ class LocationService : Service() {
 
     private fun startHeartbeat(motion: String) {
         stopHeartbeat()
-        val intervalMs = NetworkingService.throttleIntervalMs(motion)
+        val intervalMs = PingloTimingConfig.heartbeatIntervalMs(motion)
         val runnable = object : Runnable {
             override fun run() {
                 val loc = _lastLocation.value ?: return
@@ -508,7 +499,7 @@ class LocationService : Service() {
 
         val geofence = Geofence.Builder()
             .setRequestId(GEOFENCE_ID)
-            .setCircularRegion(location.latitude, location.longitude, GEOFENCE_RADIUS_M)
+            .setCircularRegion(location.latitude, location.longitude, PingloTimingConfig.GEOFENCE_RADIUS_M)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
             .build()
@@ -523,7 +514,7 @@ class LocationService : Service() {
             .addOnSuccessListener {
                 hasActiveGeofence = true
                 if (BuildConfig.DEBUG) {
-                    Log.d(TAG, "Geofence at ${location.latitude},${location.longitude} r=${GEOFENCE_RADIUS_M}m")
+                    Log.d(TAG, "Geofence at ${location.latitude},${location.longitude} r=${PingloTimingConfig.GEOFENCE_RADIUS_M}m")
                 }
             }
             .addOnFailureListener { e ->

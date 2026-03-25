@@ -12,6 +12,7 @@ import androidx.work.workDataOf
 import com.pinglo.tracker.BuildConfig
 import com.pinglo.tracker.config.ConfigurationDefaults
 import com.pinglo.tracker.config.ConfigurationKeys
+import com.pinglo.tracker.config.PingloTimingConfig
 import com.pinglo.tracker.model.MotionType
 import com.pinglo.tracker.model.RequestPayload
 import com.squareup.moshi.JsonClass
@@ -78,14 +79,8 @@ class NetworkingService @Inject constructor(
         private const val TAG = "NetworkingService"
         private const val PENDING_PINGS_KEY = "pendingPings"
 
-        fun throttleIntervalMs(activity: String): Long = when (activity) {
-            "WALKING"    -> 120_000L
-            "RUNNING"    -> 120_000L
-            "CYCLING"    -> 240_000L
-            "AUTOMOTIVE" -> 600_000L
-            "STILL"      -> 1_200_000L
-            else         -> 300_000L
-        }
+        fun throttleIntervalMs(activity: String): Long =
+            PingloTimingConfig.throttleIntervalMs(activity)
     }
 
     fun sendLocation(
@@ -192,7 +187,7 @@ class NetworkingService @Inject constructor(
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, PingloTimingConfig.RETRY_INITIAL_BACKOFF_MINUTES, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(context).enqueue(workRequest)

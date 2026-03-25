@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pinglo.tracker.config.ConfigurationKeys
 import com.pinglo.tracker.config.Environment
+import com.pinglo.tracker.config.PingloTimingConfig
 import com.pinglo.tracker.service.LocationService
 import com.pinglo.tracker.service.NetworkingService
 import com.pinglo.tracker.service.SecureStore
@@ -264,6 +265,6 @@ class TrackerViewModel @Inject constructor(
     }
 
     companion object {
-        private const val PAUSE_DURATION_MS = 25L * 60 * 1000
+        private const val PAUSE_DURATION_MS = PingloTimingConfig.PAUSE_DURATION_MS
     }
 }
