@@ -11,6 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import android.util.Log
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Singleton
@@ -18,6 +19,7 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+    private const val TAG = "NetworkModule"
 
     @Provides
     @Singleton
@@ -35,12 +37,21 @@ object NetworkModule {
                     .build()
             )
         }
+        val urlLoggingInterceptor = Interceptor { chain ->
+            if (BuildConfig.DEBUG) {
+                val request = chain.request()
+                // Only log the URL path (not headers/body) to keep this safe for parity debugging.
+                Log.d(TAG, "HTTP ${request.method} ${request.url.encodedPath}")
+            }
+            chain.proceed(chain.request())
+        }
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
                     else HttpLoggingInterceptor.Level.NONE
         }
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(urlLoggingInterceptor)
             .addInterceptor(loggingInterceptor)
             .build()
     }

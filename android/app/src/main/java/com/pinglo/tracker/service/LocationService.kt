@@ -1,12 +1,14 @@
 package com.pinglo.tracker.service
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
@@ -69,6 +71,23 @@ class LocationService : Service() {
         )
     }
 
+    private fun hasForegroundLocationPermission(): Boolean {
+        val fineGranted = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return fineGranted || coarseGranted
+    }
+
+    private fun hasBackgroundLocationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasActivityRecognitionPermission(): Boolean {
+        // ACTIVITY_RECOGNITION is runtime from Q.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
+    }
+
     // -- Clients -------------------------------------------------------------------
 
     private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
@@ -109,6 +128,7 @@ class LocationService : Service() {
     private var lastPingLocation: Location? = null
     private val maxHorizontalAccuracy = 50f
     private var hasActiveGeofence = false
+    private var backgroundLocationAllowed = false
     private var isTracking = false
 
     // ===========================================================================
@@ -164,20 +184,56 @@ class LocationService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startTracking() {
+        val hasForeground = hasForegroundLocationPermission()
+        val hasBackground = hasBackgroundLocationPermission()
+
+        if (!hasForeground) {
+            // This can happen when the user selects “Continue Without Location”.
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Missing location permissions (foreground=$hasForeground background=$hasBackground). Not starting tracking.")
+            }
+            isTracking = false
+            _isRunning.value = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        backgroundLocationAllowed = hasBackground
+
         isTracking = true
         _isRunning.value = true
 
-        fusedLocationClient.requestLocationUpdates(
-            buildLocationRequest("STILL"), locationCallback, Looper.getMainLooper(),
-        )
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                buildLocationRequest("STILL"), locationCallback, Looper.getMainLooper(),
+            )
+        } catch (e: SecurityException) {
+            // Defensive: even with permission checks, OEM ROMs can behave differently.
+            if (BuildConfig.DEBUG) Log.w(TAG, "requestLocationUpdates failed: ${e.message}")
+            isTracking = false
+            _isRunning.value = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
 
         val arIntent = Intent(this, LocationService::class.java).apply { action = ACTION_ACTIVITY }
-        activityPendingIntent = PendingIntent.getForegroundService(
-            this, REQUEST_CODE_ACTIVITY, arIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-        )
-        ActivityRecognition.getClient(this)
-            .requestActivityUpdates(5_000, activityPendingIntent!!)
+        if (hasActivityRecognitionPermission()) {
+            activityPendingIntent = PendingIntent.getForegroundService(
+                this, REQUEST_CODE_ACTIVITY, arIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+            )
+            try {
+                ActivityRecognition.getClient(this)
+                    .requestActivityUpdates(5_000, activityPendingIntent!!)
+            } catch (e: SecurityException) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "requestActivityUpdates failed: ${e.message}")
+            }
+        } else {
+            // Keep motion as STILL; location updates + heartbeat can still produce pings.
+            if (BuildConfig.DEBUG) Log.w(TAG, "Missing ACTIVITY_RECOGNITION permission. Skipping motion updates.")
+        }
 
         startHeartbeat("STILL")
         resetDecayTimer()
@@ -188,6 +244,7 @@ class LocationService : Service() {
     private fun stopTracking() {
         if (!isTracking) return
         isTracking = false
+        backgroundLocationAllowed = false
         _isRunning.value = false
 
         fusedLocationClient.removeLocationUpdates(locationCallback)
@@ -444,6 +501,9 @@ class LocationService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun registerVisitGeofence(location: Location) {
+        // Geofence is a background use-case on Android Q+.
+        if (!backgroundLocationAllowed) return
+
         tearDownGeofence()
 
         val geofence = Geofence.Builder()
