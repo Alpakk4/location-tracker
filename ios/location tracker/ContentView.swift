@@ -569,7 +569,11 @@ struct OnboardingFlowView: View {
         }
     }
 
-    // Step 1: Location permission — advance to motion when authorized.
+    private var locationDenied: Bool {
+        loc.authorizationStatus == .denied || loc.authorizationStatus == .restricted
+    }
+
+    // Step 1: Location permission — advance to motion when resolved.
     private var locationStep: some View {
         VStack(spacing: 30) {
             Spacer()
@@ -582,48 +586,91 @@ struct OnboardingFlowView: View {
             Text("Enable Background Tracking")
                 .font(.title).bold()
 
-            Text("This app maps your activity diary. To work correctly, it needs access to your location even when the app is closed.")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-                .foregroundColor(.secondary)
+            if locationDenied {
+                Text("Location access was denied. The app won't be able to record your travel diary without it. You can enable it later in Settings.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("This app maps your activity diary. To work correctly, it needs access to your location even when the app is closed.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .foregroundColor(.secondary)
 
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    Image(systemName: "1.circle.fill").foregroundColor(.purple)
-                    Text("Select **'Allow While Using App'** when prompted.")
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        Image(systemName: "1.circle.fill").foregroundColor(.purple)
+                        Text("Select **'Allow While Using App'** when prompted.")
+                    }
+                    HStack(alignment: .top) {
+                        Image(systemName: "2.circle.fill").foregroundColor(.purple)
+                        Text("Then, go to **Settings > Apps > pingLo > Location** and set it to **'Always'**.")
+                    }
                 }
-                HStack(alignment: .top) {
-                    Image(systemName: "2.circle.fill").foregroundColor(.purple)
-                    Text("Then, go to **Settings > Apps > pingLo > Location** and set it to **'Always'**.")
-                }
+                .font(.subheadline)
+                .padding(.horizontal)
             }
-            .font(.subheadline)
-            .padding(.horizontal)
 
             Spacer()
 
-            Button(action: {
-                loc.requestAuth()
-            }) {
-                Text("Enable Always Access")
-                    .fontWeight(.bold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.purple)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
+            if locationDenied {
+                Button(action: {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    Text("Open Settings")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple.opacity(0.15))
+                        .foregroundColor(.purple)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+
+                Button(action: {
+                    step = .motion
+                }) {
+                    Text("Continue Without Location")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
+            } else {
+                Button(action: {
+                    loc.requestAuth()
+                }) {
+                    Text("Enable Always Access")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
             }
-            .padding(.horizontal, 40)
-            .padding(.bottom, 40)
         }
         .onChange(of: loc.authorizationStatus) {
-            if loc.authorizationStatus == .authorizedAlways || loc.authorizationStatus == .authorizedWhenInUse {
+            if loc.authorizationStatus != .notDetermined {
                 step = .motion
             }
         }
     }
 
-    // Step 2: Motion permission — set hasCompletedOnboarding when done (or Continue if unavailable).
+    private var motionDenied: Bool {
+        let status = loc.motionAuthorizationStatus
+        return status == .denied || status == .restricted
+    }
+
+    // Step 2: Motion permission — advance to deviceId when resolved (or Continue if unavailable/denied).
     private var motionStep: some View {
         VStack(spacing: 30) {
             Spacer()
@@ -636,7 +683,12 @@ struct OnboardingFlowView: View {
             Text("Enable Activity Detection")
                 .font(.title).bold()
 
-            if loc.isMotionAvailable {
+            if motionDenied {
+                Text("Motion access was denied. The app won't be able to detect how you travel (walking, driving, etc.). You can enable it later in Settings.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .foregroundColor(.secondary)
+            } else if loc.isMotionAvailable {
                 Text("Knowing whether you're walking, driving, or still helps build a better activity diary. Allow access when prompted.")
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -650,21 +702,52 @@ struct OnboardingFlowView: View {
 
             Spacer()
 
-            Button(action: {
-                loc.ensureMotionPermission {
-                    step = .deviceId
+            if motionDenied {
+                Button(action: {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    Text("Open Settings")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple.opacity(0.15))
+                        .foregroundColor(.purple)
+                        .cornerRadius(12)
                 }
-            }) {
-                Text(loc.isMotionAvailable ? "Enable Motion & Fitness" : "Continue")
-                    .fontWeight(.bold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.purple)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
+                .padding(.horizontal, 40)
+
+                Button(action: {
+                    step = .deviceId
+                }) {
+                    Text("Continue Without Motion")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
+            } else {
+                Button(action: {
+                    loc.ensureMotionPermission {
+                        step = .deviceId
+                    }
+                }) {
+                    Text(loc.isMotionAvailable ? "Enable Motion & Fitness" : "Continue")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 40)
             }
-            .padding(.horizontal, 40)
-            .padding(.bottom, 40)
         }
     }
 
@@ -684,7 +767,7 @@ struct OnboardingFlowView: View {
             Text("What is this device id?")
                 .font(.title).bold()
 
-            Text("Enter the identifier for this device. This is required before you can start using the app.")
+            Text("Enter the identifier for this device (Provided to you at study enrollement - for more information please contact the app developer). This is required before you can start using the app.")
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
                 .foregroundColor(.secondary)

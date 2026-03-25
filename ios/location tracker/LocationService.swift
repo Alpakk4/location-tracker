@@ -86,8 +86,17 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Ensures Motion & Fitness permission has been surfaced to the user.
     /// If motion is unavailable, calls completion immediately. Otherwise performs a lightweight query
     /// so the system shows the permission dialog, then waits until the user has responded before calling completion.
+    var motionAuthorizationStatus: CMAuthorizationStatus {
+        CMMotionActivityManager.authorizationStatus()
+    }
+
     func ensureMotionPermission(completion: @escaping () -> Void) {
         guard CMMotionActivityManager.isActivityAvailable() else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        let status = CMMotionActivityManager.authorizationStatus()
+        if status == .denied || status == .restricted {
             DispatchQueue.main.async { completion() }
             return
         }

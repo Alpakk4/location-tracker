@@ -348,17 +348,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.1;
 				DEVELOPMENT_TEAM = 78Q92DXZTJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses motion data to detect your activity type (walking, cycling, driving).";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -367,7 +363,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "codes.alpaktopus.location-tracker";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -537,17 +533,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.1;
 				DEVELOPMENT_TEAM = 78Q92DXZTJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses motion data to detect your activity type (walking, cycling, driving).";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -556,7 +548,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "codes.alpaktopus.location-tracker";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -571,17 +563,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = PingloAppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.1;
 				DEVELOPMENT_TEAM = 78Q92DXZTJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "location-tracker-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Pinglo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background and foreground to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app uses your location in the background to track your activity and provide continuous location-based features.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location while the app is in use to show your position and provide location-based features.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses motion data to detect your activity type (walking, cycling, driving).";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -590,7 +578,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "codes.alpaktopus.location-tracker";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
