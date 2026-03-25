@@ -1,25 +1,23 @@
-// Diary builder: clusters location pings into visits with confidence classification.
-// Uses ST-DBSCAN (Spatio-Temporal DBSCAN) for density-based clustering.
+// Diary builder: clusters location pings into visits with confidence classification
 
 import { serve } from "std/http/server.ts"
 import { createClient } from "supabase"
 import { TABLE_A_PLACE_TYPES, getCategory } from "../_shared/place-types.ts"
 import { getActivityForCategory } from "../_shared/category-activity-map.ts"
-
 // ---------------------------------------------------------------------------
-// Types & interfaces
+// Types & interfaces (groups of types)
 // ---------------------------------------------------------------------------
 
 interface PositionFromHome {
-  distance: number;
-  bearing: number;
-  x_m?: number;
-  y_m?: number;
+  distance: number; // metres from home
+  bearing: number;  // degrees (0-360)
+  x_m?: number;     // east-west offset from home in metres (flat-earth)
+  y_m?: number;     // north-south offset from home in metres (flat-earth)
 }
 
 interface MotionType {
-  motion: string;
-  confidence: string;
+  motion: string;     // walking | cycling | automotive | still | unknown
+  confidence: string; // low | medium | high | unknown
 }
 
 interface RawPing {
@@ -51,7 +49,7 @@ interface ClusterResult {
 }
 
 interface JourneyResult {
-  journey_id: string;
+  journey_id: string;       // first ping's entryid
   entry_ids: string[];
   from_visit_id: string | null;
   to_visit_id: string | null;
@@ -68,37 +66,54 @@ interface JourneyResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Distance between two points given as offsets from a shared origin (home).
+ *  Prefers numerically stable Euclidean distance on Cartesian (x_m, y_m) offsets.
+ *  Falls back to the law of cosines on polar coords for legacy pings. */
 function distanceBetween(a: PositionFromHome, b: PositionFromHome): number {
+  // Prefer Cartesian when both points have offsets
   if (a.x_m != null && a.y_m != null && b.x_m != null && b.y_m != null) {
     const dx = a.x_m - b.x_m;
     const dy = a.y_m - b.y_m;
     return Math.sqrt((dx * dx) + (dy * dy));
   }
+  // Fallback: law of cosines on polar coordinates
   const dθ = (b.bearing - a.bearing) * Math.PI / 180;
   const d2 = a.distance ** 2 + b.distance ** 2 -
              2 * a.distance * b.distance * Math.cos(dθ);
-  return Math.sqrt(Math.max(0, d2));
+  return Math.sqrt(Math.max(0, d2)); // guard against tiny negatives from fp
 }
 
+/** True when motion confidence is at least "medium". */
 function isMediumPlusConfidence(confidence: string): boolean {
   return confidence === "medium" || confidence === "high";
 }
 
+/** Classify one consecutive-ping pair into a confidence level. */
 function pairConfidence(dist: number, prevMotion: MotionType, currMotion: MotionType): "high" | "medium" | "low" {
   const sameMotion = currMotion.motion === prevMotion.motion;
   const isStillOrWalking = currMotion.motion === "still" || currMotion.motion === "walking";
   const favorablePath = sameMotion || (isStillOrWalking && isMediumPlusConfidence(currMotion.confidence));
 
   if (favorablePath) {
+    // Between points,if the distance is less than 25m, return high confidence etc. When favourable path conditions are true e.g motion_type is the same OR still/walking and medium+ confidence.
     if (dist <= 25) return "high";
     if (dist <= 50) return "medium";
     return "low";
   } else {
+    // Different motion type but within 75 m of previous point, return medium confidence. Otherwise return low confidence.
     if (dist <= 50) return "medium";
     return "low";
   }
 }
 
+/** Return the most common element in an array (mode).
+ * 
+ *  Finds the element that appears most frequently. In case of ties, returns
+ *  the first element encountered with the maximum count. If the array is empty,
+ *  throws an error (callers should ensure non-empty arrays).
+ * 
+ *  Optimized to a single pass through the array.
+ */
 function mode<T>(arr: T[]): T {
   if (arr.length === 0) {
     throw new Error("mode() called with empty array");
@@ -108,11 +123,14 @@ function mode<T>(arr: T[]): T {
   let best: T = arr[0];
   let bestCount = 0;
 
+  // Single pass: count occurrences and track the mode simultaneously
   for (const v of arr) {
     const key = String(v);
     const count = (counts.get(key) ?? 0) + 1;
     counts.set(key, count);
 
+    // Update best if this element has a higher count
+    // In case of ties, keep the first encountered (bestCount check uses > not >=)
     if (count > bestCount) {
       bestCount = count;
       best = v;
@@ -122,13 +140,26 @@ function mode<T>(arr: T[]): T {
   return best;
 }
 
+/** Compute cluster-level confidence and visit type using a weighted multi-signal score.
+ *
+ *  Signals:
+ *    1. Pair-wise spatial confidence (weighted average of high/medium/low pairs)
+ *    2. GPS accuracy quality (average horizontal_accuracy of pings)
+ *    3. Ping count (more data points = more trustworthy)
+ *    4. Motion type distribution (still/walking boost, automotive penalty)
+ *
+ *  The first three signals are combined additively into a base composite.
+ *  The motion distribution acts as a multiplicative modifier and determines visit_type.
+ */
 function computeClusterConfidence(pingsInCluster: RawPing[]): {
   visit_confidence: "high" | "medium" | "low";
   visit_type: VisitType;
 } {
+  // ----- Signal 1: Pair-wise spatial confidence (weighted average) -----
   let pairScore: number;
 
   if (pingsInCluster.length < 2) {
+    // Single ping — no consecutive pairs to evaluate, pessimistic default
     pairScore = 0.33;
   } else {
     let highCount = 0, medCount = 0, lowCount = 0;
@@ -147,16 +178,18 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
       else lowCount++;
     }
     const totalPairs = highCount + medCount + lowCount;
+    // Weighted average: high=3, medium=2, low=1, normalised to [0,1]
     pairScore = (3 * highCount + 2 * medCount + lowCount) / (3 * totalPairs);
   }
 
+  // ----- Signal 2: GPS accuracy quality (lower metres = better) -----
   const accuracies = pingsInCluster
     .map(p => p.horizontal_accuracy)
     .filter((a): a is number => a != null);
 
   let accuracyFactor: number;
   if (accuracies.length === 0) {
-    accuracyFactor = 0.7;
+    accuracyFactor = 0.7; // no accuracy data — neutral-conservative
   } else {
     const avgAccuracy = accuracies.reduce((s, a) => s + a, 0) / accuracies.length;
     if (avgAccuracy <= 10) accuracyFactor = 1.0;
@@ -165,6 +198,7 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
     else accuracyFactor = 0.5;
   }
 
+  // ----- Signal 3: Ping count (more data = more trustworthy) -----
   const count = pingsInCluster.length;
   let pingCountFactor: number;
   if (count === 1) pingCountFactor = 0.3;
@@ -172,6 +206,7 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
   else if (count <= 6) pingCountFactor = 0.85;
   else pingCountFactor = 1.0;
 
+  // ----- Signal 4: Motion type distribution -----
   const motionCounts: Record<string, number> = {};
   for (const p of pingsInCluster) {
     const m = p.motion_type.motion.toLowerCase();
@@ -186,20 +221,26 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
   let visitType: VisitType = "visit";
 
   if (stillWalkingProp >= 0.7) {
+    // Stationary-dominant cluster — strong indicator of a real visit
     motionMultiplier = 1.15;
     visitType = "confirmed_visit";
   } else if (automotiveProp >= 0.5) {
+    // Automotive-dominant — likely a traffic stop, not a genuine visit
     motionMultiplier = 0.6;
     visitType = "traffic_stop";
   }
 
+  // ----- Composite score -----
+  // Pair confidence is the primary signal (55%); accuracy (25%) and ping count (20%) modulate
   const baseComposite =
     pairScore       * 0.55 +
     accuracyFactor  * 0.25 +
     pingCountFactor * 0.20;
 
+  // Motion distribution acts as a multiplicative modifier
   const finalScore = Math.min(1.0, baseComposite * motionMultiplier);
 
+  // Threshold into confidence bands
   let visit_confidence: "high" | "medium" | "low";
   if (finalScore >= 0.80) visit_confidence = "high";
   else if (finalScore >= 0.55) visit_confidence = "medium";
@@ -208,6 +249,7 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
   return { visit_confidence, visit_type: visitType };
 }
 
+/** Duration in whole seconds between two ISO timestamps. */
 function durationSeconds(startISO: string, endISO: string): number {
   return Math.max(0, Math.round((new Date(endISO).getTime() - new Date(startISO).getTime()) / 1000));
 }
@@ -216,16 +258,21 @@ function durationSeconds(startISO: string, endISO: string): number {
 // GPS Smoothing (moving median on Cartesian offsets)
 // ---------------------------------------------------------------------------
 
+/** Return the median of a numeric array. */
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/** Apply a moving-median filter over a window of 3 pings to reduce GPS noise.
+ *  Only smooths Cartesian offsets (x_m, y_m); pings without Cartesian data pass through.
+ *  Returns new array — does not mutate originals. */
 function smoothPings(pings: RawPing[]): RawPing[] {
   if (pings.length < 3) return pings;
   const WINDOW = 3;
   return pings.map((ping, i) => {
+    // Only smooth pings that have Cartesian coordinates
     if (ping.position_from_home.x_m == null || ping.position_from_home.y_m == null) return ping;
 
     const start = Math.max(0, i - Math.floor(WINDOW / 2));
@@ -238,6 +285,7 @@ function smoothPings(pings: RawPing[]): RawPing[] {
     const medianX = median(windowPings.map(p => p.position_from_home.x_m!));
     const medianY = median(windowPings.map(p => p.position_from_home.y_m!));
 
+    // Return a new ping with smoothed position; preserve all other fields
     return {
       ...ping,
       position_from_home: {
@@ -253,8 +301,8 @@ function smoothPings(pings: RawPing[]): RawPing[] {
 // Clustering (ST-DBSCAN)
 // ---------------------------------------------------------------------------
 
-const ST_EPS_SPATIAL_M   = 75;              // eps1: max spatial neighbour distance (metres)
-const ST_EPS_TEMPORAL_MS = 45 * 60 * 1000;  // eps2: max temporal neighbour distance (ms)
+const ST_EPS_SPATIAL_M   = 50;              // eps1: max spatial neighbour distance (metres)
+const ST_EPS_TEMPORAL_MS = 30 * 60 * 1000;  // eps2: max temporal neighbour distance (ms)
 const ST_MIN_PTS         = 2;               // minimum neighbours (incl. self) to be a core point
 
 /**
@@ -262,7 +310,7 @@ const ST_MIN_PTS         = 2;               // minimum neighbours (incl. self) t
  *
  * Pings must be sorted by created_at ascending on entry. The temporal sort
  * order is exploited for early-exit neighbour search (scan outward from i and
- * break when |delta-t| > eps2).
+ * break when |Δt| > eps2).
  *
  * Returns an array of ping groups. Each noise ping becomes its own
  * single-element group so every ping appears in exactly one group.
@@ -283,16 +331,19 @@ function stDbscan(
   const timestamps = pings.map(p => new Date(p.created_at).getTime());
   const labels = new Int32Array(n).fill(UNCLASSIFIED);
 
+  /** Return indices of all points within eps1/eps2 of point i (including i). */
   function regionQuery(i: number): number[] {
     const neighbours: number[] = [];
     const ti = timestamps[i];
 
+    // Scan backward from i
     for (let j = i; j >= 0; j--) {
       if (ti - timestamps[j] > eps2_ms) break;
       if (distanceBetween(pings[i].position_from_home, pings[j].position_from_home) <= eps1_m) {
         neighbours.push(j);
       }
     }
+    // Scan forward from i+1
     for (let j = i + 1; j < n; j++) {
       if (timestamps[j] - ti > eps2_ms) break;
       if (distanceBetween(pings[i].position_from_home, pings[j].position_from_home) <= eps1_m) {
@@ -314,6 +365,7 @@ function stDbscan(
       continue;
     }
 
+    // Start a new cluster
     clusterId++;
     labels[i] = clusterId;
 
@@ -342,6 +394,7 @@ function stDbscan(
     }
   }
 
+  // Collect groups by label; noise pings each become a single-element group
   const groups: RawPing[][] = [];
   const clusterGroups = new Map<number, RawPing[]>();
 
@@ -360,6 +413,7 @@ function stDbscan(
     groups.push(group);
   }
 
+  // Sort groups by earliest ping timestamp for deterministic output order
   groups.sort((a, b) => new Date(a[0].created_at).getTime() - new Date(b[0].created_at).getTime());
 
   return groups;
@@ -377,7 +431,9 @@ function buildClusterResults(groups: RawPing[][]): ClusterResult[] {
     const motionTypes = pingsInCluster.map(p => p.motion_type);
 
     const allOtherTypes = [...new Set(pingsInCluster.flatMap(p => p.other_types))];
+
     const motionMode = mode(motionTypes.map(m => JSON.stringify(m)));
+
     const primaryMode = mode(primaryTypes);
     const pc = primaryMode === "home" ? "Home" : mode(categories);
 
@@ -401,17 +457,22 @@ function buildClusterResults(groups: RawPing[][]): ClusterResult[] {
 
 function clusterPings(pings: RawPing[]): ClusterResult[] {
   if (pings.length === 0) return [];
+
+  // const groups = groupPings(pings); // legacy centroid-anchored clustering
   const groups = stDbscan(pings, ST_EPS_SPATIAL_M, ST_EPS_TEMPORAL_MS, ST_MIN_PTS);
   return buildClusterResults(groups);
 }
 
 // ---------------------------------------------------------------------------
-// Selection: enforce minimum dwell time, then all high + up to 15 medium/low
+// Selection: enforce minimum dwell time, then all high + up to 10 medium/low
 // ---------------------------------------------------------------------------
 
-const MIN_DWELL_SECONDS = 90;
+/** Minimum seconds a cluster must span to qualify as a full visit.
+ *  Clusters shorter than this are capped at "low" confidence (transient stops). */
+const MIN_DWELL_SECONDS = 180; // 3 minutes
 
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
+  // Downgrade clusters that are too brief to be real visits
   for (const c of clusters) {
     if (c.cluster_duration_s < MIN_DWELL_SECONDS) {
       c.visit_confidence = "low";
@@ -423,13 +484,16 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   const medium = clusters.filter(c => c.visit_confidence === "medium");
   const low    = clusters.filter(c => c.visit_confidence === "low");
 
-  const MAX_NON_HIGH = 15;
+  const MAX_NON_HIGH = 10;
   let selectedNonHigh: ClusterResult[] = [];
 
   if (medium.length + low.length <= MAX_NON_HIGH) {
+    // Everything fits
     selectedNonHigh = [...medium, ...low];
   } else {
+    // Guarantee at least 1 low if it exists
     const reservedLow  = low.length > 0 ? 1 : 0;
+    // Guarantee at least 1 medium if it exists
     const reservedMed  = medium.length > 0 ? 1 : 0;
 
     const slotsForMedium = Math.min(medium.length, MAX_NON_HIGH - reservedLow);
@@ -438,28 +502,34 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
     const pickedMedium = medium.slice(0, Math.max(slotsForMedium, reservedMed));
     const pickedLow    = low.slice(0, Math.max(slotsForLow, reservedLow));
 
+    // If we overshot, trim from the lower-priority tier (low first)
     selectedNonHigh = [...pickedMedium, ...pickedLow];
     if (selectedNonHigh.length > MAX_NON_HIGH) {
+      // Trim excess low entries
       const excess = selectedNonHigh.length - MAX_NON_HIGH;
       selectedNonHigh = [...pickedMedium, ...pickedLow.slice(0, pickedLow.length - excess)];
     }
   }
 
+  // Merge and sort chronologically
   const result = [...high, ...selectedNonHigh];
   result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   return result;
 }
 
 // ---------------------------------------------------------------------------
-// Journey segmentation
+// Journey segmentation: split pings between medium+ confidence visits by transport
 // ---------------------------------------------------------------------------
 
+/** Active transport modes (exclude "still" and "unknown" which get absorbed). */
 const ACTIVE_MODES = new Set(["walking", "running", "cycling", "automotive"]);
 
+/** Normalise motion string to lowercase for consistent comparison. */
 function normaliseMotion(m: string): string {
   return m.toLowerCase();
 }
 
+/** Expected ping interval in seconds per transport mode (matches iOS throttle intervals). */
 const EXPECTED_INTERVAL: Record<string, number> = {
   walking: 120,
   running: 120,
@@ -467,12 +537,14 @@ const EXPECTED_INTERVAL: Record<string, number> = {
   automotive: 600,
 };
 
+/** Map visit confidence labels to numeric scores for anchor quality calculation. */
 function visitConfidenceScore(conf: "high" | "medium" | "low"): number {
   if (conf === "high") return 1.0;
   if (conf === "medium") return 0.66;
   return 0.33;
 }
 
+/** Plausible speed ranges in km/h per transport mode. */
 const SPEED_RANGES: Record<string, { min: number; max: number }> = {
   walking:    { min: 0, max: 15 },
   running:    { min: 0, max: 25 },
@@ -480,6 +552,13 @@ const SPEED_RANGES: Record<string, { min: number; max: number }> = {
   automotive: { min: 3, max: 200 },
 };
 
+/**
+ * Compute a journey confidence score from four signals:
+ *   1. Mode dominance (40%): consistency of the primary transport mode
+ *   2. Ping density  (35%): how well-sampled the journey is relative to expectations
+ *   3. Anchor quality (25%): confidence of the bounding visits
+ *   4. Plausibility (multiplicative): average speed must be reasonable for the mode
+ */
 function computeJourneyConfidence(
   segmentPings: RawPing[],
   primaryTransport: string,
@@ -488,25 +567,30 @@ function computeJourneyConfidence(
   fromVisit: ClusterResult,
   toVisit: ClusterResult,
 ): "high" | "medium" | "low" {
+  // --- Signal 1: Mode dominance (40%) ---
   const dominance = transportProportions[primaryTransport] ?? 0;
   let modeScore: number;
   if (dominance >= 0.8) modeScore = 1.0;
   else if (dominance >= 0.6) modeScore = 0.75;
   else modeScore = 0.5;
 
+  // --- Signal 2: Ping density (35%) ---
   const expectedInterval = EXPECTED_INTERVAL[primaryTransport] ?? 300;
   const expectedPings = durationS > 0 ? durationS / expectedInterval : 1;
   const densityScore = Math.min(1.0, segmentPings.length / Math.max(1, expectedPings));
 
+  // --- Signal 3: Anchor quality (25%) ---
   const anchorScore =
     (visitConfidenceScore(fromVisit.visit_confidence) +
      visitConfidenceScore(toVisit.visit_confidence)) / 2;
 
+  // --- Base composite ---
   const baseComposite =
     modeScore     * 0.40 +
     densityScore  * 0.35 +
     anchorScore   * 0.25;
 
+  // --- Signal 4: Plausibility check (multiplicative) ---
   let plausibilityMultiplier = 1.0;
   if (durationS > 0 && segmentPings.length >= 2) {
     const first = segmentPings[0];
@@ -529,18 +613,25 @@ function computeJourneyConfidence(
   return "low";
 }
 
+/**
+ * Segment pings between consecutive medium-or-higher confidence visits into journeys.
+ * Each journey is a contiguous run of pings sharing the same active transport mode.
+ * "still"/"unknown" pings are absorbed into the preceding active segment.
+ */
 function segmentJourneys(
   allPings: RawPing[],
   selectedVisits: ClusterResult[],
 ): JourneyResult[] {
+  // 1. Identify medium+ confidence visits in chronological order as journey anchors
   const anchorVisits = selectedVisits
     .filter(v => v.visit_confidence === "high" || v.visit_confidence === "medium")
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  if (anchorVisits.length < 2) return [];
+  if (anchorVisits.length < 2) return []; // need at least two anchors
 
   const journeys: JourneyResult[] = [];
 
+  // 2. For each consecutive pair of anchor visits, extract gap pings
   for (let vi = 0; vi < anchorVisits.length - 1; vi++) {
     const vA = anchorVisits[vi];
     const vB = anchorVisits[vi + 1];
@@ -548,8 +639,9 @@ function segmentJourneys(
     const gapStart = new Date(vA.ended_at).getTime();
     const gapEnd   = new Date(vB.created_at).getTime();
 
-    if (gapEnd <= gapStart) continue;
+    if (gapEnd <= gapStart) continue; // overlapping or zero-width gap
 
+    // Collect pings strictly between the two visits
     const gapPings = allPings.filter(p => {
       const t = new Date(p.created_at).getTime();
       return t > gapStart && t < gapEnd;
@@ -557,6 +649,7 @@ function segmentJourneys(
 
     if (gapPings.length === 0) continue;
 
+    // 3. Segment by active transport mode changes
     const segments: RawPing[][] = [];
     let currentSegment: RawPing[] = [];
     let currentMode: string | null = null;
@@ -566,8 +659,10 @@ function segmentJourneys(
 
       if (ACTIVE_MODES.has(motion)) {
         if (motion === currentMode) {
+          // Same active mode — extend segment
           currentSegment.push(ping);
         } else {
+          // Different active mode — start new segment
           if (currentSegment.length > 0) {
             segments.push(currentSegment);
           }
@@ -575,33 +670,40 @@ function segmentJourneys(
           currentMode = motion;
         }
       } else {
+        // "still" or "unknown" — absorb into current segment if one exists
         if (currentSegment.length > 0) {
           currentSegment.push(ping);
         }
+        // If no active segment started yet, skip this ping
       }
     }
+    // Flush last segment
     if (currentSegment.length > 0) {
       segments.push(currentSegment);
     }
 
+    // 4. Build JourneyResult for each segment
     for (const seg of segments) {
+      // Count motion types for proportions
       const motionCounts: Record<string, number> = {};
       for (const p of seg) {
         const m = normaliseMotion(p.motion_type.motion);
         motionCounts[m] = (motionCounts[m] ?? 0) + 1;
       }
 
-      const segTotal = seg.length;
+      // Compute proportions (rounded to 2 decimals)
+      const total = seg.length;
       const proportions: Record<string, number> = {};
-      for (const [m, cnt] of Object.entries(motionCounts)) {
-        proportions[m] = Math.round((cnt / segTotal) * 100) / 100;
+      for (const [m, count] of Object.entries(motionCounts)) {
+        proportions[m] = Math.round((count / total) * 100) / 100;
       }
 
+      // Primary transport = active mode with highest count
       let primaryTransport = "unknown";
       let bestCount = 0;
-      for (const [m, cnt] of Object.entries(motionCounts)) {
-        if (ACTIVE_MODES.has(m) && cnt > bestCount) {
-          bestCount = cnt;
+      for (const [m, count] of Object.entries(motionCounts)) {
+        if (ACTIVE_MODES.has(m) && count > bestCount) {
+          bestCount = count;
           primaryTransport = m;
         }
       }
@@ -611,7 +713,12 @@ function segmentJourneys(
       const segDuration = durationSeconds(first.created_at, last.created_at);
 
       const journey_confidence = computeJourneyConfidence(
-        seg, primaryTransport, proportions, segDuration, vA, vB,
+        seg,
+        primaryTransport,
+        proportions,
+        segDuration,
+        vA,
+        vB,
       );
 
       journeys.push({
@@ -634,13 +741,23 @@ function segmentJourneys(
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic visit/journey injection
+// Synthetic (red herring) visit/journey injection for sensitivity/specificity
 // ---------------------------------------------------------------------------
 
+
+// ---------------------------------------------------------------------------
+// Category Definitions and lookup mapping (for speed)
+// ---------------------------------------------------------------------------
+
+
+
+
+/** Pick a random element from an array. */
 function randomChoice<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Pick a weighted random confidence level mimicking real visit distribution. */
 function randomVisitConfidence(): "high" | "medium" | "low" {
   const r = Math.random();
   if (r < 0.50) return "high";
@@ -648,6 +765,7 @@ function randomVisitConfidence(): "high" | "medium" | "low" {
   return "low";
 }
 
+/** Pick a weighted random transport mode. */
 function randomTransportMode(): string {
   const r = Math.random();
   if (r < 0.40) return "walking";
@@ -661,12 +779,18 @@ interface TimeSlot {
   endMs: number;
 }
 
+/**
+ * Generate 1-3 synthetic red-herring visits placed in available time slots.
+ * Each visit uses either a reused place type from the day's real visits or a
+ * random Table A type. Synthetic IDs are prefixed with "syn_" for clarity.
+ */
 function generateSyntheticVisits(
   realVisits: ClusterResult[],
   date: string,
 ): ClusterResult[] {
   if (realVisits.length === 0) return [];
 
+  // Build available time slots: gaps between visits + before first / after last
   const dayStartMs = new Date(`${date}T07:00:00Z`).getTime();
   const dayEndMs   = new Date(`${date}T22:00:00Z`).getTime();
 
@@ -676,11 +800,13 @@ function generateSyntheticVisits(
 
   const slots: TimeSlot[] = [];
 
+  // Before first visit
   const firstStart = new Date(sorted[0].created_at).getTime();
   if (firstStart - dayStartMs >= 600_000) {
     slots.push({ startMs: dayStartMs, endMs: firstStart });
   }
 
+  // Gaps between visits
   for (let i = 0; i < sorted.length - 1; i++) {
     const gapStart = new Date(sorted[i].ended_at).getTime();
     const gapEnd   = new Date(sorted[i + 1].created_at).getTime();
@@ -689,6 +815,7 @@ function generateSyntheticVisits(
     }
   }
 
+  // After last visit
   const lastEnd = new Date(sorted[sorted.length - 1].ended_at).getTime();
   if (dayEndMs - lastEnd >= 600_000) {
     slots.push({ startMs: lastEnd, endMs: dayEndMs });
@@ -697,7 +824,9 @@ function generateSyntheticVisits(
   if (slots.length === 0) return [];
 
   const realPlaceTypes = sorted.map(v => v.primary_type).filter(Boolean);
-  const count = Math.min(1 + Math.floor(Math.random() * 3), slots.length);
+  const count = Math.min(1 + Math.floor(Math.random() * 3), slots.length); // 1-3, capped by slots
+
+  // Shuffle slots to pick randomly without replacement
   const shuffledSlots = [...slots].sort(() => Math.random() - 0.5);
 
   const synthetics: ClusterResult[] = [];
@@ -706,15 +835,18 @@ function generateSyntheticVisits(
     const slot = shuffledSlots[i];
     const slotDurationMs = slot.endMs - slot.startMs;
 
+    // Visit duration: 5-60 minutes, capped at 70% of slot so there's room for travel
     const maxDurationMs = Math.min(60 * 60_000, slotDurationMs * 0.7);
     const minDurationMs = Math.min(5 * 60_000, maxDurationMs);
     const visitDurationMs = minDurationMs + Math.random() * (maxDurationMs - minDurationMs);
     const visitDurationS = Math.round(visitDurationMs / 1000);
 
+    // Place the visit randomly within the slot (leaving margins for travel)
     const margin = (slotDurationMs - visitDurationMs) / 2;
     const visitStartMs = slot.startMs + margin * (0.3 + Math.random() * 0.4);
     const visitEndMs = visitStartMs + visitDurationMs;
 
+    // Choose place type: 50/50 reuse vs random
     let primaryType: string;
     if (realPlaceTypes.length > 0 && Math.random() < 0.5) {
       primaryType = randomChoice(realPlaceTypes);
@@ -723,8 +855,8 @@ function generateSyntheticVisits(
     }
 
     const visitConfidence = randomVisitConfidence();
-    const synCat = primaryType === "home" ? "Home" : getCategory(primaryType);
 
+    const synCat = primaryType === "home" ? "Home" : getCategory(primaryType);
     synthetics.push({
       entryid: `syn_${crypto.randomUUID()}`,
       entry_ids: [],
@@ -745,6 +877,11 @@ function generateSyntheticVisits(
   return synthetics;
 }
 
+/**
+ * Generate synthetic journeys connecting synthetic visits to their chronological
+ * neighbors (real or synthetic). Each synthetic visit gets up to 2 journeys:
+ * one arriving from the previous visit and one departing to the next.
+ */
 function generateSyntheticJourneys(
   allVisitsSorted: ClusterResult[],
   syntheticVisits: ClusterResult[],
@@ -758,6 +895,7 @@ function generateSyntheticJourneys(
     const visit = allVisitsSorted[i];
     if (!syntheticIds.has(visit.entryid)) continue;
 
+    // Journey from previous visit to this synthetic visit
     if (i > 0) {
       const prev = allVisitsSorted[i - 1];
       const gapStartMs = new Date(prev.ended_at).getTime();
@@ -782,6 +920,7 @@ function generateSyntheticJourneys(
       }
     }
 
+    // Journey from this synthetic visit to next visit
     if (i < allVisitsSorted.length - 1) {
       const next = allVisitsSorted[i + 1];
       const gapStartMs = new Date(visit.ended_at).getTime();
@@ -807,6 +946,9 @@ function generateSyntheticJourneys(
     }
   }
 
+  // Deduplicate: if two synthetic visits are adjacent, the departing journey of
+  // the first and the arriving journey of the second would cover the same gap.
+  // Keep only the first one encountered for each (from_visit_id, to_visit_id) pair.
   const seen = new Set<string>();
   const deduped: JourneyResult[] = [];
   for (const j of journeys) {
@@ -868,6 +1010,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingDiary?.submitted_at) {
+      // Diary already submitted – return existing visits and journeys
       const { data: existingVisits } = await supabase
         .from('diary_visits')
         .select('*')
@@ -916,7 +1059,7 @@ serve(async (req) => {
     }
 
     // 5. Filter out inaccurate pings, then smooth, cluster, classify, and select
-    const MAX_ACCURACY_M = 100;
+    const MAX_ACCURACY_M = 100; // reject pings with GPS accuracy worse than 100 metres
     const allPings = (data as RawPing[]).filter(p =>
       p.position_from_home != null &&
       (p.horizontal_accuracy != null && p.horizontal_accuracy <= MAX_ACCURACY_M)
@@ -926,6 +1069,7 @@ serve(async (req) => {
     const selected = selectClusters(allClusters);
 
     // 5b. Segment journeys between medium+ confidence visits
+    // Note: uses original (unsmoothed) pings so journey positions reflect actual GPS data
     const journeys = segmentJourneys(allPings, selected);
 
     // 6. Pre-populate normalized diary tables (diaries -> diary_visits -> diary_visit_entries)
@@ -942,6 +1086,7 @@ serve(async (req) => {
 
     if (diaryError || !diaryRow) {
       console.error("Diary upsert error:", diaryError);
+      // Non-fatal: still return clusters to iOS even if DB write fails
     }
 
     // 5c. Conditionally generate synthetic red-herring visits and journeys.
@@ -952,6 +1097,7 @@ serve(async (req) => {
     let syntheticVisitIds: Set<string>;
     let syntheticJourneyIds: Set<string>;
 
+    // Query previous real visit IDs so we can detect new true visits
     let previousRealVisitIds = new Set<string>();
     if (diaryRow) {
       const { data: prevVisits } = await supabase
@@ -1124,18 +1270,19 @@ serve(async (req) => {
     }
 
     // 7. Return all visits and journeys (real + synthetic) to iOS
+    // Note: is_synthetic flag is only in the DB, not in these response objects
     return new Response(JSON.stringify({ visits: allVisits, journeys: allJourneys }), {
       status: 200,
-      headers: {
+      headers: { 
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+        "Access-Control-Allow-Origin": "*" 
       },
     });
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Unexpected error:", message);
-    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
     });

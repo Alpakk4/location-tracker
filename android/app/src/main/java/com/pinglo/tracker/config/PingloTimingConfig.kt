@@ -18,7 +18,7 @@ object PingloTimingConfig {
         "RUNNING"    -> 120_000L    // 2 min
         "CYCLING"    -> 240_000L    // 4 min
         "AUTOMOTIVE" -> 600_000L    // 10 min
-        "STILL"      -> 1_200_000L  // 20 min
+        "STILL"      -> 300_000L    // 5 min
         else         -> 300_000L    // 5 min (UNKNOWN / fallback)
     }
 

@@ -21,7 +21,7 @@ enum PingloTimingConfig {
         case "RUNNING":    return 120    // 2 min
         case "CYCLING":    return 240    // 4 min
         case "AUTOMOTIVE": return 600    // 10 min
-        case "STILL":      return 1200   // 20 min
+        case "STILL":      return 300    // 5 min
         default:           return 300    // 5 min (UNKNOWN / fallback)
         }
     }

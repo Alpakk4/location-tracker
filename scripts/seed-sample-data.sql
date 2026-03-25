@@ -1,0 +1,74 @@
+-- ============================================================================
+-- Sample data extraction for ST-DBSCAN comparison testing
+-- Device: I-R1-26-0001 | Dates: 2026-03-08 to 2026-03-09
+-- ============================================================================
+--
+-- STEP 1: Run this query against the LIVE database (Supabase SQL Editor or psql)
+--         to export pings as CSV.
+--
+-- Option A — via Supabase SQL Editor (copy results manually):
+--
+--   SELECT entryid, created_at, deviceid, primary_type, other_types,
+--          position_from_home, motion_type, horizontal_accuracy
+--   FROM   locationsvisitednew
+--   WHERE  deviceid = 'I-R1-26-0001'
+--     AND  created_at >= '2026-03-08T00:00:00Z'
+--     AND  created_at <  '2026-03-10T00:00:00Z'
+--   ORDER BY created_at;
+--
+-- Option B — via psql COPY (run against live DB connection string):
+--
+--   \COPY (
+--     SELECT entryid, created_at, deviceid, primary_type, other_types,
+--            position_from_home, motion_type, horizontal_accuracy
+--     FROM   locationsvisitednew
+--     WHERE  deviceid = 'I-R1-26-0001'
+--       AND  created_at >= '2026-03-08T00:00:00Z'
+--       AND  created_at <  '2026-03-10T00:00:00Z'
+--     ORDER BY created_at
+--   ) TO 'scripts/sample-pings.csv' WITH (FORMAT csv, HEADER true)
+--
+-- ============================================================================
+-- STEP 2: Load CSV into LOCAL Supabase (port 54322)
+-- ============================================================================
+--
+-- Run from the project root:
+--
+--   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+--     -c "\COPY locationsvisitednew(entryid, created_at, deviceid, primary_type, other_types, position_from_home, motion_type, horizontal_accuracy) FROM 'scripts/sample-pings.csv' WITH (FORMAT csv, HEADER true)"
+--
+-- ============================================================================
+-- STEP 2 (Alternative): If CSV import has issues with JSONB/array columns,
+-- use this approach instead — dump as INSERT statements.
+-- ============================================================================
+--
+-- Run against the LIVE database to generate INSERT SQL:
+--
+--   psql "<LIVE_CONNECTION_STRING>" -c "
+--     COPY (
+--       SELECT format(
+--         'INSERT INTO locationsvisitednew (entryid, created_at, deviceid, primary_type, other_types, position_from_home, motion_type, horizontal_accuracy) VALUES (%L, %L, %L, %L, %L, %L, %L, %s);',
+--         entryid, created_at, deviceid, primary_type, other_types::text,
+--         position_from_home::text, motion_type::text,
+--         COALESCE(horizontal_accuracy::text, 'NULL')
+--       )
+--       FROM locationsvisitednew
+--       WHERE deviceid = 'I-R1-26-0001'
+--         AND created_at >= '2026-03-08T00:00:00Z'
+--         AND created_at <  '2026-03-10T00:00:00Z'
+--       ORDER BY created_at
+--     ) TO STDOUT
+--   " > scripts/sample-inserts.sql
+--
+-- Then load into local:
+--
+--   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+--     -f scripts/sample-inserts.sql
+--
+-- ============================================================================
+-- Quick reference: verify data loaded
+-- ============================================================================
+--
+-- SELECT count(*), min(created_at), max(created_at)
+-- FROM   locationsvisitednew
+-- WHERE  deviceid = 'I-R1-26-0001';

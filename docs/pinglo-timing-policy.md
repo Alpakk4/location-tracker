@@ -18,7 +18,7 @@ updates location, and heartbeats. Both platforms read from their respective
 | RUNNING    | 2 min    | 120 000      | 120     |
 | CYCLING    | 4 min    | 240 000      | 240     |
 | AUTOMOTIVE | 10 min   | 600 000      | 600     |
-| STILL      | 20 min   | 1 200 000    | 1200    |
+| STILL      | 5 min    | 300 000      | 300     |
 | UNKNOWN    | 5 min    | 300 000      | 300     |
 
 Non-forced pings are dropped if the last ping for the same activity was sent

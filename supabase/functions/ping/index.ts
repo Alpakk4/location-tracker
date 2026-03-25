@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
           latitude: lat,
           longitude: long
         },
-        radius: 50.0
+        radius: 200.0
       }
     }
   };

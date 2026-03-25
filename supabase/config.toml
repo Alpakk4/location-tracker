@@ -385,3 +385,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/decommission-device/deno.json"
 entrypoint = "./functions/decommission-device/index.ts"
+
+[functions.diary-maker-historic]
+enabled = true
+verify_jwt = false
+import_map = "./functions/diary-maker-historic/deno.json"
+entrypoint = "./functions/diary-maker-historic/index.ts"
