@@ -387,7 +387,7 @@ import_map = "./functions/decommission-device/deno.json"
 entrypoint = "./functions/decommission-device/index.ts"
 
 [functions.diary-maker-development]
-enabled = true
+enabled = false
 verify_jwt = false
 import_map = "./functions/diary-maker-development/deno.json"
 entrypoint = "./functions/diary-maker-development/index.ts"
