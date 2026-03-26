@@ -144,3 +144,6 @@ When changing features, models, or flows:
 - [ ] Updated README architecture/entities/data-flow if behavior changed.
 - [ ] Updated relationship notes when ids or links change.
 - [ ] Updated config docs when keys/endpoints change.
+
+## Legal
+Please see the attached [Ownership Notice](./ownershipstatement.md)
