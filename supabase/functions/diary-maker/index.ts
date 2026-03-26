@@ -216,16 +216,17 @@ function computeClusterConfidence(pingsInCluster: RawPing[]): {
   const stillWalkingProp =
     ((motionCounts["still"] ?? 0) + (motionCounts["walking"] ?? 0)) / total;
   const automotiveProp = (motionCounts["automotive"] ?? 0) / total;
+  const activeTransportProp =
+    ((motionCounts["running"] ?? 0) + (motionCounts["cycling"] ?? 0) + (motionCounts["automotive"] ?? 0)) / total;
 
   let motionMultiplier = 1.0;
   let visitType: VisitType = "visit";
 
-  if (stillWalkingProp >= 0.7) {
-    // Stationary-dominant cluster — strong indicator of a real visit
+  if (stillWalkingProp >= 0.7 && activeTransportProp <= 0.15) {
+    // Stationary-dominant cluster with minimal active transport pings — real visit
     motionMultiplier = 1.15;
     visitType = "confirmed_visit";
   } else if (automotiveProp >= 0.5) {
-    // Automotive-dominant — likely a traffic stop, not a genuine visit
     motionMultiplier = 0.6;
     visitType = "traffic_stop";
   }
@@ -455,12 +456,51 @@ function buildClusterResults(groups: RawPing[][]): ClusterResult[] {
   });
 }
 
+const CLUSTER_DEPARTURE_M = 100; // an intervening ping this far from BOTH cluster ends means the user left and returned
+
+/**
+ * Split clusters where the user demonstrably departed the area between member
+ * pings. ST-DBSCAN can group pings that are spatially close but separated by
+ * an out-and-back trip (e.g. outbound and return legs of a run passing through
+ * the same area). For each gap between consecutive cluster members, check
+ * whether any intervening ping (from the full sorted list) is far from both
+ * ends. If so, the user left and returned — split the cluster at that gap.
+ */
+function splitNonContiguousClusters(groups: RawPing[][], allPingsSorted: RawPing[]): RawPing[][] {
+  const result: RawPing[][] = [];
+  for (const group of groups) {
+    if (group.length <= 1) { result.push(group); continue; }
+    let currentSplit: RawPing[] = [group[0]];
+    for (let i = 1; i < group.length; i++) {
+      const prevMs = new Date(group[i - 1].created_at).getTime();
+      const currMs = new Date(group[i].created_at).getTime();
+
+      const departed = allPingsSorted.some(p => {
+        const t = new Date(p.created_at).getTime();
+        if (t <= prevMs || t >= currMs) return false;
+        const d1 = distanceBetween(p.position_from_home, group[i - 1].position_from_home);
+        const d2 = distanceBetween(p.position_from_home, group[i].position_from_home);
+        return d1 > CLUSTER_DEPARTURE_M && d2 > CLUSTER_DEPARTURE_M;
+      });
+
+      if (departed) {
+        result.push(currentSplit);
+        currentSplit = [group[i]];
+      } else {
+        currentSplit.push(group[i]);
+      }
+    }
+    result.push(currentSplit);
+  }
+  return result;
+}
+
 function clusterPings(pings: RawPing[]): ClusterResult[] {
   if (pings.length === 0) return [];
 
-  // const groups = groupPings(pings); // legacy centroid-anchored clustering
   const groups = stDbscan(pings, ST_EPS_SPATIAL_M, ST_EPS_TEMPORAL_MS, ST_MIN_PTS);
-  return buildClusterResults(groups);
+  const contiguous = splitNonContiguousClusters(groups, pings);
+  return buildClusterResults(contiguous);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +514,36 @@ const MIN_DWELL_SECONDS = 180; // 3 minutes
 const MAX_MEDIUM = 8;
 const MAX_LOW    = 8;
 
+/**
+ * Remove temporally overlapping visits. Two visits overlap when one starts
+ * before the other ends. Since a user cannot be in two places at once, keep
+ * the stronger visit (higher confidence, then more pings as tiebreaker).
+ */
+function resolveOverlaps(visits: ClusterResult[]): ClusterResult[] {
+  const sorted = [...visits].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  const removed = new Set<number>();
+  const confRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (removed.has(i)) continue;
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (removed.has(j)) continue;
+      const aEnd = new Date(sorted[i].ended_at).getTime();
+      const bStart = new Date(sorted[j].created_at).getTime();
+      if (bStart >= aEnd) break;
+
+      const aRank = confRank[sorted[i].visit_confidence] ?? 0;
+      const bRank = confRank[sorted[j].visit_confidence] ?? 0;
+      if (aRank > bRank) removed.add(j);
+      else if (bRank > aRank) removed.add(i);
+      else removed.add(sorted[i].ping_count >= sorted[j].ping_count ? j : i);
+    }
+  }
+  return sorted.filter((_, idx) => !removed.has(idx));
+}
+
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   for (const c of clusters) {
     if (c.cluster_duration_s < MIN_DWELL_SECONDS) {
@@ -486,14 +556,15 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   const medium = clusters.filter(c => c.visit_confidence === "medium");
   const low    = clusters.filter(c => c.visit_confidence === "low" && c.visit_type !== "brief_stop");
 
-  const result = [
+  const selected = [
     ...high,
     ...medium.slice(0, MAX_MEDIUM),
     ...low.slice(0, MAX_LOW),
   ];
 
-  result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  return result;
+  const resolved = resolveOverlaps(selected);
+  resolved.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  return resolved;
 }
 
 // ---------------------------------------------------------------------------
