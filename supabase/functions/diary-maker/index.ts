@@ -253,8 +253,8 @@ function smoothPings(pings: RawPing[]): RawPing[] {
 // Clustering (ST-DBSCAN)
 // ---------------------------------------------------------------------------
 
-const ST_EPS_SPATIAL_M   = 75;              // eps1: max spatial neighbour distance (metres)
-const ST_EPS_TEMPORAL_MS = 45 * 60 * 1000;  // eps2: max temporal neighbour distance (ms)
+const ST_EPS_SPATIAL_M   = 50;              // eps1: max spatial neighbour distance (metres)
+const ST_EPS_TEMPORAL_MS = 30 * 60 * 1000;  // eps2: max temporal neighbour distance (ms)
 const ST_MIN_PTS         = 2;               // minimum neighbours (incl. self) to be a core point
 
 /**
@@ -409,7 +409,7 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 // Selection: enforce minimum dwell time, then all high + up to 15 medium/low
 // ---------------------------------------------------------------------------
 
-const MIN_DWELL_SECONDS = 90;
+const MIN_DWELL_SECONDS = 180; // 3 minutes
 
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   for (const c of clusters) {
@@ -423,7 +423,7 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
   const medium = clusters.filter(c => c.visit_confidence === "medium");
   const low    = clusters.filter(c => c.visit_confidence === "low");
 
-  const MAX_NON_HIGH = 15;
+  const MAX_NON_HIGH = 20;
   let selectedNonHigh: ClusterResult[] = [];
 
   if (medium.length + low.length <= MAX_NON_HIGH) {
