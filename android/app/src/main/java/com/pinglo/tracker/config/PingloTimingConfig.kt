@@ -22,10 +22,18 @@ object PingloTimingConfig {
         else         -> 300_000L    // 5 min (UNKNOWN / fallback)
     }
 
-    // ── Heartbeat interval (repeating timer that fires sendLocation with force=false) ──
-    // Defined to equal the throttle interval per activity.
+    // ── Heartbeat interval (repeating timer that fires sendLocation with force=true) ──
+    // Decoupled from throttle: STILL uses a shorter interval to guarantee enough
+    // pings for medium+ visit confidence; active modes use a long safety-net interval.
 
-    fun heartbeatIntervalMs(activity: String): Long = throttleIntervalMs(activity)
+    fun heartbeatIntervalMs(activity: String): Long = when (activity) {
+        "STILL"      -> 175_000L    // ~3 min -- guarantees 2 pings in MIN_DWELL_SECONDS with latency buffer
+        "WALKING"    -> 600_000L    // 10 min safety net
+        "RUNNING"    -> 600_000L
+        "CYCLING"    -> 600_000L
+        "AUTOMOTIVE" -> 600_000L
+        else         -> 300_000L
+    }
 
     // ── Ping distance gate (min movement since last ping before a new one is sent) ──
 

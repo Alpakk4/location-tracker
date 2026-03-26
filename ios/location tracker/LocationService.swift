@@ -324,7 +324,7 @@ class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
                 guard let self = self, let loc = self.lastLocation else { return }
                 self.lastPingLocation = loc
                 NetworkingService.shared.sendLocation(
-                    loc, activity: self.currentMotion, confidence: self.currentConfidence, force: false
+                    loc, activity: self.currentMotion, confidence: self.currentConfidence, force: true
                 )
             }
             RunLoop.main.add(timer, forMode: .common)

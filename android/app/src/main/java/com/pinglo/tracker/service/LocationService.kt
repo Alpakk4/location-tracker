@@ -472,7 +472,7 @@ class LocationService : Service() {
                 lastPingLocation = loc
                 networkingService.sendLocation(
                     loc.latitude, loc.longitude, loc.accuracy.toDouble(),
-                    _currentMotion.value, _currentConfidence.value, force = false,
+                    _currentMotion.value, _currentConfidence.value, force = true,
                 )
                 handler.postDelayed(this, intervalMs)
             }

@@ -464,15 +464,17 @@ function clusterPings(pings: RawPing[]): ClusterResult[] {
 }
 
 // ---------------------------------------------------------------------------
-// Selection: enforce minimum dwell time, then all high + up to 10 medium/low
+// Selection: enforce minimum dwell time, then tiered caps per confidence band.
+// All high-confidence visits always appear. Up to MAX_MEDIUM medium and
+// MAX_LOW low (non-brief-stop) visits are included. Brief stops (< 180s)
+// are excluded entirely to keep the diary focused on real visits.
 // ---------------------------------------------------------------------------
 
-/** Minimum seconds a cluster must span to qualify as a full visit.
- *  Clusters shorter than this are capped at "low" confidence (transient stops). */
 const MIN_DWELL_SECONDS = 180; // 3 minutes
+const MAX_MEDIUM = 8;
+const MAX_LOW    = 8;
 
 function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
-  // Downgrade clusters that are too brief to be real visits
   for (const c of clusters) {
     if (c.cluster_duration_s < MIN_DWELL_SECONDS) {
       c.visit_confidence = "low";
@@ -482,37 +484,14 @@ function selectClusters(clusters: ClusterResult[]): ClusterResult[] {
 
   const high   = clusters.filter(c => c.visit_confidence === "high");
   const medium = clusters.filter(c => c.visit_confidence === "medium");
-  const low    = clusters.filter(c => c.visit_confidence === "low");
+  const low    = clusters.filter(c => c.visit_confidence === "low" && c.visit_type !== "brief_stop");
 
-  const MAX_NON_HIGH = 10;
-  let selectedNonHigh: ClusterResult[] = [];
+  const result = [
+    ...high,
+    ...medium.slice(0, MAX_MEDIUM),
+    ...low.slice(0, MAX_LOW),
+  ];
 
-  if (medium.length + low.length <= MAX_NON_HIGH) {
-    // Everything fits
-    selectedNonHigh = [...medium, ...low];
-  } else {
-    // Guarantee at least 1 low if it exists
-    const reservedLow  = low.length > 0 ? 1 : 0;
-    // Guarantee at least 1 medium if it exists
-    const reservedMed  = medium.length > 0 ? 1 : 0;
-
-    const slotsForMedium = Math.min(medium.length, MAX_NON_HIGH - reservedLow);
-    const slotsForLow    = MAX_NON_HIGH - slotsForMedium;
-
-    const pickedMedium = medium.slice(0, Math.max(slotsForMedium, reservedMed));
-    const pickedLow    = low.slice(0, Math.max(slotsForLow, reservedLow));
-
-    // If we overshot, trim from the lower-priority tier (low first)
-    selectedNonHigh = [...pickedMedium, ...pickedLow];
-    if (selectedNonHigh.length > MAX_NON_HIGH) {
-      // Trim excess low entries
-      const excess = selectedNonHigh.length - MAX_NON_HIGH;
-      selectedNonHigh = [...pickedMedium, ...pickedLow.slice(0, pickedLow.length - excess)];
-    }
-  }
-
-  // Merge and sort chronologically
-  const result = [...high, ...selectedNonHigh];
   result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   return result;
 }
@@ -533,7 +512,7 @@ function normaliseMotion(m: string): string {
 const EXPECTED_INTERVAL: Record<string, number> = {
   walking: 120,
   running: 120,
-  cycling: 420,
+  cycling: 240,
   automotive: 600,
 };
 

@@ -26,11 +26,19 @@ enum PingloTimingConfig {
         }
     }
 
-    // MARK: - Heartbeat interval (repeating timer that fires sendLocation with force=false)
-    // Defined to equal the throttle interval per activity.
+    // MARK: - Heartbeat interval (repeating timer that fires sendLocation with force=true)
+    // Decoupled from throttle: STILL uses a shorter interval to guarantee enough
+    // pings for medium+ visit confidence; active modes use a long safety-net interval.
 
     static func heartbeatInterval(for activity: String) -> TimeInterval {
-        throttleInterval(for: activity)
+        switch activity {
+        case "STILL":      return 175    // ~3 min -- guarantees 2 pings in MIN_DWELL_SECONDS with latency buffer
+        case "WALKING":    return 600    // 10 min safety net
+        case "RUNNING":    return 600
+        case "CYCLING":    return 600
+        case "AUTOMOTIVE": return 600
+        default:           return 300
+        }
     }
 
     // MARK: - Ping distance gate (min movement since last ping before a new one is sent)
