@@ -86,4 +86,4 @@ scripts/seed-sample-data.sql
 scripts/output/
 scripts/sample-pings.csv
 scripts/sample-inserts.sql
-*.sh 
+**.sh 
