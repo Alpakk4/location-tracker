@@ -77,3 +77,13 @@ android/app/release/
 scripts/output/
 scripts/samplepings.csv
 scripts/sample-inserts.sql
+srcipt/*.py
+
+# Python Analysis Scripts
+scripts/analyse_pings.py
+scripts/compare-clustering.sh
+scripts/seed-sample-data.sql
+scripts/output/
+scripts/sample-pings.csv
+scripts/sample-inserts.sql
+*.sh 
