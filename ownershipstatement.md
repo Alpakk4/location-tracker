@@ -1,6 +1,6 @@
-Statement of Independent Intellectual Property Creation
+# Statement of Independent Intellectual Property Creation
 
-I, Alexander Skondras, declare that the mobile application titled "PingLo" was developed entirely by me starting September 2025 and June 2026.
+I, Alexander Skondras, declare that the mobile application titled "PingLo" was developed entirely by me starting September 2025 and ending June 2026.
 
 Purpose: The app was created solely as a requirement for the MSc in Clinical Engineering at King's College London. It was not a deliverable for my employment at GSTT.
 
