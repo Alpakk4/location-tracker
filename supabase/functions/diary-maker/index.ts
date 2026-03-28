@@ -1109,7 +1109,7 @@ serve(async (req) => {
     }
 
     // 5. Filter out inaccurate pings, then smooth, cluster, classify, and select
-    const MAX_ACCURACY_M = 100; // reject pings with GPS accuracy worse than 100 metres
+    const MAX_ACCURACY_M = 60; // reject pings with GPS accuracy worse than 100 metres
     const allPings = (data as RawPing[]).filter(p =>
       p.position_from_home != null &&
       (p.horizontal_accuracy != null && p.horizontal_accuracy <= MAX_ACCURACY_M)
