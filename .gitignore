@@ -87,3 +87,6 @@ scripts/output/
 scripts/sample-pings.csv
 scripts/sample-inserts.sql
 **.sh 
+
+# data files
+*.sql
